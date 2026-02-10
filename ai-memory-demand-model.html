@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI-Driven DRAM &amp; NAND Demand Model</title>
+<style>
+:root {
+  --navy: #1a2744;
+  --navy-light: #2a3f6e;
+  --bg: #f7f8fc;
+  --card-bg: #ffffff;
+  --text: #1e2a3a;
+  --text-muted: #5a6a7e;
+  --border: #dde2eb;
+  --bear: #2d9a5c;
+  --bear-bg: #e8f6ee;
+  --base: #2563eb;
+  --base-bg: #e8f0ff;
+  --bull: #dc4a2a;
+  --bull-bg: #fce8e4;
+  --accent: var(--base);
+  --accent-bg: var(--base-bg);
+  --surplus: #16a34a;
+  --deficit: #dc2626;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.06);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+.container { max-width: 1280px; margin: 0 auto; padding: 24px 32px 64px; }
+header {
+  background: var(--navy);
+  color: #fff;
+  padding: 28px 0 20px;
+  position: sticky; top: 0; z-index: 100;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+header .container { padding-top:0; padding-bottom:0; }
+header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; margin-bottom: 4px; }
+header .subtitle { font-size: 13px; color: #94a3c4; margin-bottom: 16px; }
+.scenario-toggle { display: flex; gap: 8px; align-items: center; }
+.scenario-toggle span { font-size: 12px; color: #94a3c4; margin-right: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+.scenario-btn {
+  padding: 7px 20px;
+  border: 1.5px solid rgba(255,255,255,0.25);
+  border-radius: 6px;
+  background: transparent;
+  color: #c0c8dc;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.scenario-btn:hover { border-color: rgba(255,255,255,0.5); color: #fff; }
+.scenario-btn.active-bear { background: var(--bear); border-color: var(--bear); color: #fff; }
+.scenario-btn.active-base { background: var(--base); border-color: var(--base); color: #fff; }
+.scenario-btn.active-bull { background: var(--bull); border-color: var(--bull); color: #fff; }
+
+.card {
+  background: var(--card-bg);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  cursor: pointer;
+  user-select: none;
+  background: var(--card-bg);
+  border-bottom: 1px solid transparent;
+  transition: background 0.15s;
+}
+.card-header:hover { background: #f8f9fd; }
+.card.open .card-header { border-bottom-color: var(--border); }
+.card-header h2 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--navy);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.card-header h2 .step-badge {
+  font-size: 11px;
+  background: var(--navy);
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.card-header .chevron {
+  width: 20px; height: 20px;
+  transition: transform 0.2s;
+  color: var(--text-muted);
+}
+.card.open .card-header .chevron { transform: rotate(180deg); }
+.card-body { padding: 16px 20px 20px; display: none; }
+.card.open .card-body { display: block; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th {
+  text-align: left;
+  padding: 8px 12px;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+  border-bottom: 2px solid var(--border);
+  white-space: nowrap;
+}
+th.num, td.num { text-align: right; font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace; font-size: 12.5px; }
+td {
+  padding: 7px 12px;
+  border-bottom: 1px solid #f0f2f5;
+  vertical-align: middle;
+}
+tr:nth-child(even) td { background: #fafbfd; }
+tr.total-row td {
+  font-weight: 700;
+  border-top: 2px solid var(--navy);
+  border-bottom: 2px solid var(--navy);
+  background: #f0f3fa !important;
+}
+tr.subtotal-row td {
+  font-weight: 600;
+  border-top: 1.5px solid var(--border);
+  background: #f5f7fb !important;
+}
+.segment-label {
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  display: inline-block;
+}
+.seg-consumer { background: #ede9fe; color: #6d28d9; }
+.seg-enterprise { background: #dbeafe; color: #1d4ed8; }
+.seg-agentic { background: #fef3c7; color: #b45309; }
+
+.summary-card {
+  background: linear-gradient(135deg, var(--navy) 0%, var(--navy-light) 100%);
+  color: #fff;
+  border: none;
+}
+.summary-card .card-header { background: transparent; }
+.summary-card .card-header:hover { background: rgba(255,255,255,0.05); }
+.summary-card .card-header h2 { color: #fff; }
+.summary-card .card-header h2 .step-badge { background: rgba(255,255,255,0.2); }
+.summary-card .card-header .chevron { color: rgba(255,255,255,0.7); }
+.summary-card .card-body { color: #e2e8f0; }
+.summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.summary-box {
+  background: rgba(255,255,255,0.08);
+  border-radius: 8px;
+  padding: 16px 20px;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+.summary-box h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #94a3c4;
+  margin-bottom: 8px;
+}
+.summary-box .big-num {
+  font-size: 28px;
+  font-weight: 800;
+  font-family: 'SF Mono', Menlo, monospace;
+  letter-spacing: -0.5px;
+}
+.summary-box .sub-num {
+  font-size: 13px;
+  color: #94a3c4;
+  margin-top: 2px;
+}
+
+.waterfall-card { border: 2px solid var(--navy); }
+.waterfall-card .card-header h2 .step-badge { background: var(--bull); }
+.waterfall-chart { margin: 16px 0; }
+.wf-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.wf-label { width: 220px; flex-shrink: 0; font-weight: 500; }
+.wf-bar-container { flex: 1; height: 28px; position: relative; }
+.wf-bar {
+  height: 100%;
+  border-radius: 3px;
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 8px;
+  font-family: 'SF Mono', Menlo, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  min-width: 50px;
+  transition: width 0.4s ease, left 0.4s ease;
+}
+.wf-val { width: 120px; text-align: right; flex-shrink: 0; font-family: 'SF Mono', Menlo, monospace; font-weight: 600; font-size: 12.5px; margin-left: 8px; }
+.wf-bar.positive { background: #3b82f6; }
+.wf-bar.negative { background: #ef4444; }
+.wf-bar.total-bar { background: var(--navy); }
+.wf-bar.surplus-bar { background: var(--surplus); }
+.wf-bar.deficit-bar { background: var(--deficit); }
+.wf-bar.available { background: #8b5cf6; }
+.wf-bar.demand-bar { background: #f59e0b; }
+.wf-divider { border-top: 2px solid var(--navy); margin: 8px 0; }
+
+.drivers-table td:first-child { font-weight: 600; color: var(--navy); }
+.note { font-size: 12px; color: var(--text-muted); margin-top: 12px; line-height: 1.6; }
+.note strong { color: var(--text); }
+.tooltip-trigger {
+  border-bottom: 1px dashed var(--text-muted);
+  cursor: help;
+  position: relative;
+}
+.year-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+.year-tab {
+  padding: 5px 14px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1.5px solid var(--border);
+  background: #fff;
+  color: var(--text-muted);
+  transition: all 0.15s;
+}
+.year-tab.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+.year-tab:hover:not(.active) { border-color: var(--navy); color: var(--navy); }
+.result-highlight {
+  font-size: 18px;
+  font-weight: 800;
+  font-family: 'SF Mono', Menlo, monospace;
+  padding: 4px 0;
+}
+.result-surplus { color: var(--surplus); }
+.result-deficit { color: var(--deficit); }
+footer {
+  margin-top: 32px;
+  padding: 20px 0;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.8;
+}
+footer strong { color: var(--text); }
+@media print {
+  header { position: static; }
+  .card { break-inside: avoid; }
+  .card-body { display: block !important; }
+}
+.two-year-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+.two-year-grid > div > h3 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--navy);
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 2px solid var(--navy);
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <h1>AI-Driven DRAM &amp; NAND Demand Model</h1>
+    <div class="subtitle">Bottom-Up First-Principles Estimate &mdash; 2028 &amp; 2031 Horizons &mdash; Coatue Investment Committee</div>
+    <div class="scenario-toggle">
+      <span>Scenario</span>
+      <button class="scenario-btn" data-scenario="bear" onclick="setScenario('bear')">Bear</button>
+      <button class="scenario-btn active-base" data-scenario="base" onclick="setScenario('base')">Base</button>
+      <button class="scenario-btn" data-scenario="bull" onclick="setScenario('bull')">Bull</button>
+    </div>
+  </div>
+</header>
+
+<div class="container" id="app">
+  <!-- Scenario Drivers -->
+  <div class="card open" id="card-drivers">
+    <div class="card-header" onclick="toggleCard('card-drivers')">
+      <h2><span class="step-badge">SCENARIO</span> Key Assumptions &amp; Drivers</h2>
+      <svg class="chevron" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg>
+    </div>
+    <div class="card-body">
+      <table class="drivers-table" id="drivers-table"></table>
+      <p class="note" id="scenario-note"></p>
+    </div>
+  </div>
+
+  <!-- Layer 1: User/Instance Base -->
+  <div class="card open" id="card-layer1">
+    <div class="card-header" onclick="toggleCard('card-layer1')">
+      <h2><span class="step-badge">STEP 1</span> User / Instance Base</h2>
+      <svg class="chevron" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg>
+    </div>
+    <div class="card-body" id="layer1-body"></div>
+  </div>
+
+  <!-- Layer 2: Token Volume -->
+  <div class="card open" id="card-layer2">
+    <div class="card-header" onclick="toggleCard('card-layer2')">
+      <h2><span class="step-badge">STEP 2</span> Daily Token Volume</h2>
+      <svg class="chevron" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg>
+    </div>
+    <div class="card-body" id="layer2-body"></div>
+  </div>
+
+  <!-- Layer 3: KV Cache -->
+  <div class="card" id="card-layer3">
+    <div class="card-header" onclick="toggleCard('card-layer3')">
+      <h2><span class="step-badge">STEP 3</span> KV Cache Demand (Transient)</h2>
+      <svg class="chevron" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg>
+    </div>
+    <div class="card-body" id="layer3-body"></div>
+  </div>
+
+  <!-- Layer 4: Memory Hierarchy -->
+  <div class="card" id="card-layer4">
+    <div class="card-header" onclick="toggleCard('card-layer4')">
+      <h2><span class="step-badge">STEP 4</span> Memory Hierarchy Bleed (KV &rarr; HBM &rarr; DRAM &rarr; NAND)</h2>
+      <svg class="chevron" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg>
+    </div>
+    <div class="card-body" id="layer4-body"></div>
+  </div>
+
+  <!-- Layer 5: RAG Storage -->
+  <div class="card" id="card-layer5">
+    <div class="card-header" onclick="toggleCard('card-layer5')">
+      <h2><span class="step-badge">STEP 5</span> RAG Storage Demand</h2>
+      <svg class="chevron" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg>
+    </div>
+    <div class="card-body" id="layer5-body"></div>
+  </div>
+
+  <!-- Layer 6: Non-KV/RAG -->
+  <div class="card" id="card-layer6">
+    <div class="card-header" onclick="toggleCard('card-layer6')">
+      <h2><span class="step-badge">STEP 6</span> Non-KV, Non-RAG Persistent Data</h2>
+      <svg class="chevron" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg>
+    </div>
+    <div class="card-body" id="layer6-body"></div>
+  </div>
+
+  <!-- Layer 7: Replication -->
+  <div class="card" id="card-layer7">
+    <div class="card-header" onclick="toggleCard('card-layer7')">
+      <h2><span class="step-badge">STEP 7</span> Replication &amp; Persistence Multiplier</h2>
+      <svg class="chevron" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg>
+    </div>
+    <div class="card-body" id="layer7-body"></div>
+  </div>
+
+  <!-- Summary -->
+  <div class="card summary-card open" id="card-summary">
+    <div class="card-header" onclick="toggleCard('card-summary')">
+      <h2><span class="step-badge">TOTAL</span> AI DRAM &amp; NAND Demand</h2>
+      <svg class="chevron" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg>
+    </div>
+    <div class="card-body" id="summary-body"></div>
+  </div>
+
+  <!-- Supply Waterfall -->
+  <div class="card waterfall-card open" id="card-waterfall">
+    <div class="card-header" onclick="toggleCard('card-waterfall')">
+      <h2><span class="step-badge">VERDICT</span> NAND Supply Waterfall &mdash; Surplus / Deficit</h2>
+      <svg class="chevron" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg>
+    </div>
+    <div class="card-body" id="waterfall-body"></div>
+  </div>
+
+  <footer>
+    <strong>Sources &amp; Methodology:</strong> ChatGPT/OpenAI usage (DemandSage, Backlinko); McKinsey State of AI 2024 (65% enterprise adoption); Gartner (80% AI by 2026, agentic projections); Salesforce/IBM agent forecasts; Microsoft Copilot adoption data. KV cache architecture from Llama 3.1 (Meta), DeepSeek V3 (MLA). NAND supply estimates from TrendForce, Yole Group, IDC. DRAM supply from TrendForce, IC Insights. Replication assumptions based on hyperscaler standard practices (AWS 3-AZ, GCP multi-region). All figures are estimates built from first principles and triangulated against analyst consensus where available.<br><br>
+    <strong>Model formula:</strong> KV bytes/token = 2 &times; layers &times; KV_heads &times; head_dim &times; precision_bytes. Total KV = concurrent_sessions &times; context_tokens &times; bytes/token. NAND demand = (KV_NAND_tier + RAG_storage + non_KV_RAG_data) &times; replication_multiplier. Surplus/Deficit = NAND_available_for_AI &minus; AI_NAND_demand.
+  </footer>
+</div>
+
+<script>
+// ============================================================
+// DATA MODEL — All assumptions, single source of truth
+// ============================================================
+
+const D = {
+  // ---- Layer 1: User / Instance Base ----
+  consumer: {
+    mau_2026: 600e6,
+    mau: { bear: [800e6, 1.5e9], base: [1.2e9, 2.5e9], bull: [1.7e9, 3.5e9] },
+    dauPct: 0.30,
+    queriesPerDAU: { 2026: 8, 2028: 12, 2031: 20 }
+  },
+  enterprise: {
+    orgs_2026: 500e3,
+    orgs: { bear: [1.5e6, 4e6], base: [2e6, 6e6], bull: [3e6, 10e6] },
+    callsPerOrgDay_2026: 10e3,
+    callsPerOrgDay: { bear: [30e3, 100e3], base: [50e3, 200e3], bull: [80e3, 500e3] }
+  },
+  agentic: {
+    instances_2026: 20e6,
+    instances: { bear: [100e6, 300e6], base: [200e6, 800e6], bull: [400e6, 1.5e9] },
+    tasksPerDay_2026: 20,
+    tasksPerDay: { bear: [50, 100], base: [100, 300], bull: [150, 500] }
+  },
+
+  // ---- Layer 2: Tokens ----
+  tokensPerQuery: {
+    consumer: { 2026: 1500, 2028: 2500, 2031: 5000 },
+    enterprise: { 2026: 3000, 2028: 5000, 2031: 10000 },
+    agentic: { 2026: 20000, 2028: 50000, 2031: 100000 }
+  },
+
+  // ---- Layer 3: KV Cache ----
+  kvBytesPerToken: { // MB
+    consumer: { 2026: 0.16, 2028: 0.10, 2031: 0.06 },
+    enterprise: { 2026: 0.20, 2028: 0.15, 2031: 0.08 },
+    agentic: { 2026: 0.12, 2028: 0.04, 2031: 0.03 }
+  },
+  contextLength: {
+    consumer: { 2026: 2000, 2028: 8000, 2031: 32000 },
+    enterprise: { 2026: 8000, 2028: 32000, 2031: 128000 },
+    agentic: { 2026: 32000, 2028: 128000, 2031: 512000 }
+  },
+  concurrentSessions: {
+    consumer:   { _2026: 1e6, bear: [2e6, 5e6], base: [5e6, 15e6], bull: [10e6, 40e6] },
+    enterprise: { _2026: 500e3, bear: [2e6, 10e6], base: [5e6, 30e6], bull: [10e6, 80e6] },
+    agentic:    { _2026: 1e6, bear: [5e6, 20e6], base: [15e6, 60e6], bull: [30e6, 150e6] }
+  },
+
+  // ---- Layer 4: Memory Hierarchy ----
+  memTierSplit: {
+    // [HBM%, DRAM%, NAND%]
+    2026: [0.70, 0.25, 0.05],
+    2028: [0.55, 0.30, 0.15],
+    2031: [0.40, 0.35, 0.25]
+  },
+  persistKVPct: {
+    consumer: 0.05,
+    enterprise: 0.30,
+    agentic: 0.80
+  },
+
+  // ---- Layer 5: RAG ----
+  rag: {
+    consumer: {
+      users_2026: 50e6,
+      users: { bear: [200e6, 500e6], base: [300e6, 1e9], bull: [500e6, 2e9] },
+      storagePerUser: { 2026: 50, 2028: 200, 2031: 1000 } // MB
+    },
+    enterprise: {
+      orgs_2026: 200e3,
+      orgs: { bear: [800e3, 2e6], base: [1.2e6, 4e6], bull: [2e6, 8e6] },
+      storagePerOrg: { 2026: 2e6, 2028: 10e6, 2031: 50e6 } // MB = TB*1e6/1e6
+    },
+    agentic: {
+      instances_2026: 5e6,
+      instances: { bear: [40e6, 150e6], base: [80e6, 400e6], bull: [200e6, 800e6] },
+      storagePerAgent: { 2026: 100, 2028: 500, 2031: 2000 } // MB
+    },
+    dramHotPct: { 2026: 0.15, 2028: 0.12, 2031: 0.10 }
+  },
+
+  // ---- Layer 6: Non-KV/RAG ---- [bear, base, bull] for [2028, 2031]
+  nonKVRAG: {
+    modelWeights:    { 2026: 5, bear: [10, 30], base: [20, 80], bull: [40, 200] },
+    trainingData:    { 2026: 10, bear: [20, 50], base: [40, 150], bull: [80, 400] },
+    aiGenContent:    { 2026: 5, bear: [15, 50], base: [30, 200], bull: [60, 800] },
+    logsTelemetry:   { 2026: 3, bear: [8, 20], base: [15, 60], bull: [30, 200] },
+    finetuneData:    { 2026: 1, bear: [3, 10], base: [8, 40], bull: [15, 100] }
+  },
+
+  // ---- Layer 7: Replication ----
+  replicationMultiplier: { bear: 2.5, base: 3.0, bull: 3.5 },
+
+  // ---- Layer 9: Supply ----
+  nandSupply: {
+    total:    { 2026: 1200, bear: [1550, 2350], base: [1650, 2500], bull: [1400, 2100] },
+    smartphonePct:  { 2026: 0.40, 2028: 0.38, 2031: 0.33 },
+    consumerPCPct:  { 2026: 0.20, 2028: 0.18, 2031: 0.15 },
+    otherPct:       { 2026: 0.10, 2028: 0.09, 2031: 0.08 },
+    nonAIEntPct:    { 2026: 0.07, 2028: 0.06, 2031: 0.05 }
+  },
+  dramSupply: {
+    total:      { 2026: 155, bear: [200, 290], base: [200, 290], bull: [200, 290] },
+    serverPct:  { 2026: 0.38, 2028: 0.42, 2031: 0.50 },
+    aiSharePct: { 2026: 0.25, 2028: 0.35, 2031: 0.50 }
+  }
+};
+
+let scenario = 'base';
+let viewYear = 2028; // for waterfall
+
+// ============================================================
+// HELPERS
+// ============================================================
+function fmt(n, decimals) {
+  if (n === undefined || n === null || isNaN(n)) return '—';
+  if (decimals === undefined) decimals = (Math.abs(n) >= 100 ? 0 : Math.abs(n) >= 1 ? 1 : 2);
+  if (Math.abs(n) >= 1e15) return (n/1e15).toFixed(1) + ' P';
+  if (Math.abs(n) >= 1e12) return (n/1e12).toFixed(decimals > 1 ? 1 : decimals) + 'T';
+  if (Math.abs(n) >= 1e9) return (n/1e9).toFixed(decimals > 1 ? 1 : decimals) + 'B';
+  if (Math.abs(n) >= 1e6) return (n/1e6).toFixed(decimals > 1 ? 1 : decimals) + 'M';
+  if (Math.abs(n) >= 1e3) return (n/1e3).toFixed(decimals > 1 ? 1 : decimals) + 'K';
+  return n.toFixed(decimals);
+}
+function fmtEB(n) {
+  if (n === undefined || n === null || isNaN(n)) return '—';
+  if (Math.abs(n) >= 1000) return (n/1000).toFixed(1) + ' ZB';
+  if (Math.abs(n) < 0.01) return (n*1024).toFixed(1) + ' PB';
+  return n.toFixed(Math.abs(n) >= 100 ? 0 : Math.abs(n) >= 10 ? 1 : 2) + ' EB';
+}
+function fmtPct(n) { return (n >= 0 ? '+' : '') + n.toFixed(1) + '%'; }
+function fmtTokens(n) {
+  if (n >= 1e15) return (n/1e15).toFixed(1) + 'P';
+  if (n >= 1e12) return (n/1e12).toFixed(1) + 'T';
+  if (n >= 1e9) return (n/1e9).toFixed(1) + 'B';
+  if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+  return n.toLocaleString();
+}
+function fmtNum(n) {
+  if (n >= 1e12) return (n/1e12).toFixed(1) + 'T';
+  if (n >= 1e9) return (n/1e9).toFixed(1) + 'B';
+  if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n/1e3).toFixed(1) + 'K';
+  return Math.round(n).toLocaleString();
+}
+function si(arr) { return arr[0]; } // 2028 index
+function si2(arr) { return arr[1]; } // 2031 index
+function scn(obj, s) { return obj[s]; }
+
+// ============================================================
+// COMPUTE ENGINE
+// ============================================================
+function compute(sc) {
+  const R = {};
+
+  // Layer 1
+  const c = D.consumer, e = D.enterprise, a = D.agentic;
+  R.c_mau_28 = c.mau[sc][0]; R.c_mau_31 = c.mau[sc][1];
+  R.c_dau_28 = R.c_mau_28 * c.dauPct; R.c_dau_31 = R.c_mau_31 * c.dauPct;
+  R.c_dau_26 = c.mau_2026 * c.dauPct;
+
+  R.e_orgs_28 = e.orgs[sc][0]; R.e_orgs_31 = e.orgs[sc][1];
+  R.e_calls_28 = e.callsPerOrgDay[sc][0]; R.e_calls_31 = e.callsPerOrgDay[sc][1];
+
+  R.a_inst_28 = a.instances[sc][0]; R.a_inst_31 = a.instances[sc][1];
+  R.a_tasks_28 = a.tasksPerDay[sc][0]; R.a_tasks_31 = a.tasksPerDay[sc][1];
+
+  // Layer 2: daily tokens
+  R.c_dtok_26 = R.c_dau_26 * c.queriesPerDAU[2026] * D.tokensPerQuery.consumer[2026];
+  R.c_dtok_28 = R.c_dau_28 * c.queriesPerDAU[2028] * D.tokensPerQuery.consumer[2028];
+  R.c_dtok_31 = R.c_dau_31 * c.queriesPerDAU[2031] * D.tokensPerQuery.consumer[2031];
+
+  R.e_dtok_26 = e.orgs_2026 * e.callsPerOrgDay_2026 * D.tokensPerQuery.enterprise[2026];
+  R.e_dtok_28 = R.e_orgs_28 * R.e_calls_28 * D.tokensPerQuery.enterprise[2028];
+  R.e_dtok_31 = R.e_orgs_31 * R.e_calls_31 * D.tokensPerQuery.enterprise[2031];
+
+  R.a_dtok_26 = a.instances_2026 * a.tasksPerDay_2026 * D.tokensPerQuery.agentic[2026];
+  R.a_dtok_28 = R.a_inst_28 * R.a_tasks_28 * D.tokensPerQuery.agentic[2028];
+  R.a_dtok_31 = R.a_inst_31 * R.a_tasks_31 * D.tokensPerQuery.agentic[2031];
+
+  R.total_dtok_26 = R.c_dtok_26 + R.e_dtok_26 + R.a_dtok_26;
+  R.total_dtok_28 = R.c_dtok_28 + R.e_dtok_28 + R.a_dtok_28;
+  R.total_dtok_31 = R.c_dtok_31 + R.e_dtok_31 + R.a_dtok_31;
+
+  // Layer 3: KV cache total (bytes)
+  function kvTotal(seg, yr) {
+    const cs = yr === 2026 ? D.concurrentSessions[seg]._2026 : D.concurrentSessions[seg][sc][yr === 2028 ? 0 : 1];
+    const ctx = D.contextLength[seg][yr];
+    const bpt = D.kvBytesPerToken[seg][yr]; // MB
+    return cs * ctx * bpt * 1e6; // bytes
+  }
+  for (const seg of ['consumer','enterprise','agentic']) {
+    for (const yr of [2026,2028,2031]) {
+      R[`kv_${seg.charAt(0)}_${yr}`] = kvTotal(seg, yr);
+    }
+  }
+  for (const yr of [2026,2028,2031]) {
+    R[`kv_total_${yr}`] = R[`kv_c_${yr}`] + R[`kv_e_${yr}`] + R[`kv_a_${yr}`];
+  }
+
+  // Layer 4: memory tier split (bytes → EB: /1e18)
+  function toEB(bytes) { return bytes / 1e18; }
+  for (const yr of [2026,2028,2031]) {
+    const split = D.memTierSplit[yr];
+    R[`kv_hbm_${yr}`] = toEB(R[`kv_total_${yr}`]) * split[0];
+    R[`kv_dram_${yr}`] = toEB(R[`kv_total_${yr}`]) * split[1];
+    R[`kv_nand_${yr}`] = toEB(R[`kv_total_${yr}`]) * split[2];
+  }
+
+  // Persistent KV → NAND (rough: take total concurrent KV as proxy for active pool,
+  // multiply by persist% and a session-turnover factor ~10x for daily unique sessions)
+  for (const yr of [2028,2031]) {
+    let persistNand = 0;
+    for (const seg of ['consumer','enterprise','agentic']) {
+      const s = seg.charAt(0);
+      const kvBytes = R[`kv_${s}_${yr}`];
+      const sessionTurnover = 10; // ~10x more unique sessions than concurrent
+      persistNand += toEB(kvBytes) * D.persistKVPct[seg] * sessionTurnover;
+    }
+    R[`kv_persist_nand_${yr}`] = persistNand;
+  }
+
+  // Layer 5: RAG
+  const rg = D.rag;
+  for (const yr of [2028,2031]) {
+    const idx = yr === 2028 ? 0 : 1;
+    R[`rag_c_nand_${yr}`] = rg.consumer.users[sc][idx] * rg.consumer.storagePerUser[yr] * 1e6 / 1e18; // EB
+    R[`rag_e_nand_${yr}`] = rg.enterprise.orgs[sc][idx] * rg.enterprise.storagePerOrg[yr] * 1e6 / 1e18;
+    R[`rag_a_nand_${yr}`] = rg.agentic.instances[sc][idx] * rg.agentic.storagePerAgent[yr] * 1e6 / 1e18;
+    R[`rag_total_nand_${yr}`] = R[`rag_c_nand_${yr}`] + R[`rag_e_nand_${yr}`] + R[`rag_a_nand_${yr}`];
+    R[`rag_total_dram_${yr}`] = R[`rag_total_nand_${yr}`] * rg.dramHotPct[yr];
+  }
+  // 2026 baseline
+  R.rag_c_nand_2026 = rg.consumer.users_2026 * rg.consumer.storagePerUser[2026] * 1e6 / 1e18;
+  R.rag_e_nand_2026 = rg.enterprise.orgs_2026 * rg.enterprise.storagePerOrg[2026] * 1e6 / 1e18;
+  R.rag_a_nand_2026 = rg.agentic.instances_2026 * rg.agentic.storagePerAgent[2026] * 1e6 / 1e18;
+  R.rag_total_nand_2026 = R.rag_c_nand_2026 + R.rag_e_nand_2026 + R.rag_a_nand_2026;
+  R.rag_total_dram_2026 = R.rag_total_nand_2026 * rg.dramHotPct[2026];
+
+  // Layer 6: Non-KV/RAG
+  const nk = D.nonKVRAG;
+  for (const yr of [2028,2031]) {
+    const idx = yr === 2028 ? 0 : 1;
+    R[`nk_weights_${yr}`] = nk.modelWeights[sc][idx];
+    R[`nk_training_${yr}`] = nk.trainingData[sc][idx];
+    R[`nk_aigen_${yr}`] = nk.aiGenContent[sc][idx];
+    R[`nk_logs_${yr}`] = nk.logsTelemetry[sc][idx];
+    R[`nk_finetune_${yr}`] = nk.finetuneData[sc][idx];
+    R[`nk_total_${yr}`] = R[`nk_weights_${yr}`] + R[`nk_training_${yr}`] + R[`nk_aigen_${yr}`] + R[`nk_logs_${yr}`] + R[`nk_finetune_${yr}`];
+  }
+  R.nk_total_2026 = nk.modelWeights[2026] + nk.trainingData[2026] + nk.aiGenContent[2026] + nk.logsTelemetry[2026] + nk.finetuneData[2026]; // 24 EB
+
+  // Layer 7: Replication
+  R.replMult = D.replicationMultiplier[sc];
+
+  // Layer 8: TOTALS
+  for (const yr of [2028,2031]) {
+    // NAND: persistent KV + RAG + non-KV/RAG, all * replication
+    const persistentNand = R[`kv_persist_nand_${yr}`] + R[`rag_total_nand_${yr}`] + R[`nk_total_${yr}`];
+    R[`ai_nand_pre_repl_${yr}`] = persistentNand;
+    // Transient KV NAND (not replicated, but still counts as demand)
+    R[`ai_nand_${yr}`] = (persistentNand * R.replMult) + R[`kv_nand_${yr}`];
+    // DRAM: transient KV in DRAM + RAG hot tier + server overhead (~20% on top)
+    const dramRaw = R[`kv_dram_${yr}`] + R[`rag_total_dram_${yr}`];
+    R[`ai_dram_${yr}`] = dramRaw * 1.2; // 20% overhead for OS/buffers
+  }
+  // 2026 baseline
+  const pn26 = (R.kv_persist_nand_2028 || 0) * 0.3 + R.rag_total_nand_2026 + R.nk_total_2026;
+  R.ai_nand_2026 = pn26 * 2.5 + R.kv_nand_2026;
+  R.ai_dram_2026 = (R.kv_dram_2026 + R.rag_total_dram_2026) * 1.2;
+
+  // Layer 9: Supply
+  const ns = D.nandSupply;
+  for (const yr of [2028,2031]) {
+    const idx = yr === 2028 ? 0 : 1;
+    R[`nand_supply_${yr}`] = ns.total[sc][idx];
+    R[`nand_smartphone_${yr}`] = R[`nand_supply_${yr}`] * ns.smartphonePct[yr];
+    R[`nand_consumerPC_${yr}`] = R[`nand_supply_${yr}`] * ns.consumerPCPct[yr];
+    R[`nand_other_${yr}`] = R[`nand_supply_${yr}`] * ns.otherPct[yr];
+    R[`nand_nonAI_ent_${yr}`] = R[`nand_supply_${yr}`] * ns.nonAIEntPct[yr];
+    R[`nand_nonAI_total_${yr}`] = R[`nand_smartphone_${yr}`] + R[`nand_consumerPC_${yr}`] + R[`nand_other_${yr}`] + R[`nand_nonAI_ent_${yr}`];
+    R[`nand_avail_ai_${yr}`] = R[`nand_supply_${yr}`] - R[`nand_nonAI_total_${yr}`];
+    R[`nand_surplus_${yr}`] = R[`nand_avail_ai_${yr}`] - R[`ai_nand_${yr}`];
+    R[`nand_surplus_pct_${yr}`] = (R[`nand_surplus_${yr}`] / R[`nand_supply_${yr}`]) * 100;
+  }
+
+  // DRAM supply
+  const ds = D.dramSupply;
+  for (const yr of [2028,2031]) {
+    const idx = yr === 2028 ? 0 : 1;
+    R[`dram_supply_${yr}`] = ds.total[sc][idx];
+    R[`dram_server_${yr}`] = R[`dram_supply_${yr}`] * ds.serverPct[yr];
+    R[`dram_ai_avail_${yr}`] = R[`dram_server_${yr}`] * ds.aiSharePct[yr];
+    R[`dram_surplus_${yr}`] = R[`dram_ai_avail_${yr}`] - R[`ai_dram_${yr}`];
+  }
+
+  return R;
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+function setScenario(s) {
+  scenario = s;
+  document.querySelectorAll('.scenario-btn').forEach(b => {
+    b.className = 'scenario-btn' + (b.dataset.scenario === s ? ` active-${s}` : '');
+  });
+  render();
+}
+
+function toggleCard(id) {
+  document.getElementById(id).classList.toggle('open');
+}
+
+function setWaterfallYear(yr) {
+  viewYear = yr;
+  render();
+}
+
+function render() {
+  const R = compute(scenario);
+  const sc = scenario;
+  const scLabel = { bear: 'Bear', base: 'Base', bull: 'Bull' }[sc];
+
+  // Scenario drivers table
+  const drivers = [
+    ['Consumer AI DAU growth', { bear:'15% CAGR', base:'25% CAGR', bull:'35% CAGR' }],
+    ['Enterprise AI API adoption', { bear:'Gradual (linear)', base:'S-curve inflection 2027', bull:'Rapid universal adoption' }],
+    ['Agentic AI scale', { bear:'Slow rollout, narrow use', base:'Broad rollout, multi-domain', bull:'Ubiquitous, always-on agents' }],
+    ['Avg context length growth', { bear:'2x every 3 years', base:'4x every 3 years', bull:'8x every 3 years' }],
+    ['KV cache efficiency gains', { bear:'Aggressive (MLA, FP4, 90%)', base:'Moderate (FP4, 60%)', bull:'Minimal improvement' }],
+    ['RAG adoption depth', { bear:'Shallow (few docs)', base:'Moderate (deep KBs)', bull:'Deep (full org memory)' }],
+    ['Replication factor', { bear:'2.5x', base:'3.0x', bull:'3.5x' }],
+    ['NAND supply bit growth', { bear:'18% CAGR', base:'15% CAGR', bull:'12% CAGR (constrained)' }],
+  ];
+  let dtHTML = '<thead><tr><th style="width:220px">Driver</th><th>Bear</th><th>Base</th><th>Bull</th></tr></thead><tbody>';
+  drivers.forEach(([label, vals]) => {
+    dtHTML += '<tr>';
+    dtHTML += `<td>${label}</td>`;
+    for (const s of ['bear','base','bull']) {
+      const hl = s === sc ? ` style="background:var(--${s}-bg);font-weight:700;color:var(--${s})"` : '';
+      dtHTML += `<td${hl}>${vals[s]}</td>`;
+    }
+    dtHTML += '</tr>';
+  });
+  dtHTML += '</tbody>';
+  document.getElementById('drivers-table').innerHTML = dtHTML;
+  const scenarioNotes = {
+    bear: '<strong>Bear case:</strong> AI adoption follows a measured trajectory. Enterprise rollouts are cautious, agentic AI remains narrow. Efficiency gains in KV cache (MLA, FP4, heavy compression) reduce memory per inference. NAND supply grows at a healthy 18% CAGR — no shortage.',
+    base: '<strong>Base case:</strong> AI adoption hits an S-curve inflection in 2027. Enterprise and agentic use cases broaden significantly. Moderate efficiency gains offset some demand growth. NAND supply grows at ~15% CAGR, roughly tracking historical averages.',
+    bull: '<strong>Bull case:</strong> AI becomes ubiquitous infrastructure. Agents run continuously across every industry. Context windows explode, RAG becomes deep organizational memory. Meanwhile, NAND supply is constrained (12% CAGR) as wafer allocation shifts to HBM. This creates structural shortage.'
+  };
+  document.getElementById('scenario-note').innerHTML = scenarioNotes[sc];
+
+  // Layer 1
+  let l1 = '<table><thead><tr><th>Segment</th><th>Metric</th><th class="num">2026 (Base)</th><th class="num">2028</th><th class="num">2031</th></tr></thead><tbody>';
+  l1 += `<tr><td><span class="segment-label seg-consumer">Consumer</span></td><td>Global AI MAU</td><td class="num">${fmtNum(D.consumer.mau_2026)}</td><td class="num">${fmtNum(R.c_mau_28)}</td><td class="num">${fmtNum(R.c_mau_31)}</td></tr>`;
+  l1 += `<tr><td></td><td>DAU (30% of MAU)</td><td class="num">${fmtNum(R.c_dau_26)}</td><td class="num">${fmtNum(R.c_dau_28)}</td><td class="num">${fmtNum(R.c_dau_31)}</td></tr>`;
+  l1 += `<tr><td></td><td>Queries / DAU / day</td><td class="num">${D.consumer.queriesPerDAU[2026]}</td><td class="num">${D.consumer.queriesPerDAU[2028]}</td><td class="num">${D.consumer.queriesPerDAU[2031]}</td></tr>`;
+  l1 += `<tr><td><span class="segment-label seg-enterprise">Enterprise</span></td><td>Orgs using AI APIs</td><td class="num">${fmtNum(D.enterprise.orgs_2026)}</td><td class="num">${fmtNum(R.e_orgs_28)}</td><td class="num">${fmtNum(R.e_orgs_31)}</td></tr>`;
+  l1 += `<tr><td></td><td>Avg API calls / org / day</td><td class="num">${fmtNum(D.enterprise.callsPerOrgDay_2026)}</td><td class="num">${fmtNum(R.e_calls_28)}</td><td class="num">${fmtNum(R.e_calls_31)}</td></tr>`;
+  l1 += `<tr><td><span class="segment-label seg-agentic">Agentic</span></td><td>Active agent instances</td><td class="num">${fmtNum(D.agentic.instances_2026)}</td><td class="num">${fmtNum(R.a_inst_28)}</td><td class="num">${fmtNum(R.a_inst_31)}</td></tr>`;
+  l1 += `<tr><td></td><td>Avg tasks / agent / day</td><td class="num">${D.agentic.tasksPerDay_2026}</td><td class="num">${fmtNum(R.a_tasks_28)}</td><td class="num">${fmtNum(R.a_tasks_31)}</td></tr>`;
+  l1 += '</tbody></table>';
+  l1 += '<p class="note"><strong>Bear/Base/Bull driver:</strong> Adoption speed and usage intensity per user/org/agent. Sources: ChatGPT ~900M WAU (DemandSage); McKinsey 65% enterprise adoption; Salesforce/IBM 1B agents by 2026.</p>';
+  document.getElementById('layer1-body').innerHTML = l1;
+
+  // Layer 2
+  let l2 = '<table><thead><tr><th>Segment</th><th>Metric</th><th class="num">2026</th><th class="num">2028</th><th class="num">2031</th></tr></thead><tbody>';
+  l2 += `<tr><td><span class="segment-label seg-consumer">Consumer</span></td><td>Tokens / query (in+out)</td><td class="num">${fmtNum(D.tokensPerQuery.consumer[2026])}</td><td class="num">${fmtNum(D.tokensPerQuery.consumer[2028])}</td><td class="num">${fmtNum(D.tokensPerQuery.consumer[2031])}</td></tr>`;
+  l2 += `<tr><td></td><td>Daily tokens (all users)</td><td class="num">${fmtTokens(R.c_dtok_26)}</td><td class="num">${fmtTokens(R.c_dtok_28)}</td><td class="num">${fmtTokens(R.c_dtok_31)}</td></tr>`;
+  l2 += `<tr><td><span class="segment-label seg-enterprise">Enterprise</span></td><td>Tokens / API call</td><td class="num">${fmtNum(D.tokensPerQuery.enterprise[2026])}</td><td class="num">${fmtNum(D.tokensPerQuery.enterprise[2028])}</td><td class="num">${fmtNum(D.tokensPerQuery.enterprise[2031])}</td></tr>`;
+  l2 += `<tr><td></td><td>Daily tokens (all orgs)</td><td class="num">${fmtTokens(R.e_dtok_26)}</td><td class="num">${fmtTokens(R.e_dtok_28)}</td><td class="num">${fmtTokens(R.e_dtok_31)}</td></tr>`;
+  l2 += `<tr><td><span class="segment-label seg-agentic">Agentic</span></td><td>Tokens / task</td><td class="num">${fmtNum(D.tokensPerQuery.agentic[2026])}</td><td class="num">${fmtNum(D.tokensPerQuery.agentic[2028])}</td><td class="num">${fmtNum(D.tokensPerQuery.agentic[2031])}</td></tr>`;
+  l2 += `<tr><td></td><td>Daily tokens (all agents)</td><td class="num">${fmtTokens(R.a_dtok_26)}</td><td class="num">${fmtTokens(R.a_dtok_28)}</td><td class="num">${fmtTokens(R.a_dtok_31)}</td></tr>`;
+  l2 += `<tr class="total-row"><td></td><td>TOTAL daily tokens</td><td class="num">${fmtTokens(R.total_dtok_26)}</td><td class="num">${fmtTokens(R.total_dtok_28)}</td><td class="num">${fmtTokens(R.total_dtok_31)}</td></tr>`;
+  l2 += '</tbody></table>';
+  document.getElementById('layer2-body').innerHTML = l2;
+
+  // Layer 3: KV Cache
+  let l3 = '<h3 style="font-size:13px;margin-bottom:8px;color:var(--navy)">KV Cache Bytes Per Token (Industry-Weighted Avg)</h3>';
+  l3 += '<table><thead><tr><th>Segment</th><th class="num">2026 (MB/tok)</th><th class="num">2028 (MB/tok)</th><th class="num">2031 (MB/tok)</th><th>Trend</th></tr></thead><tbody>';
+  for (const [seg, label, cls] of [['consumer','Consumer','seg-consumer'],['enterprise','Enterprise','seg-enterprise'],['agentic','Agentic','seg-agentic']]) {
+    l3 += `<tr><td><span class="segment-label ${cls}">${label}</span></td><td class="num">${D.kvBytesPerToken[seg][2026]}</td><td class="num">${D.kvBytesPerToken[seg][2028]}</td><td class="num">${D.kvBytesPerToken[seg][2031]}</td><td style="color:var(--bear);font-size:11px">↓ GQA→MLA, FP8→FP4</td></tr>`;
+  }
+  l3 += '</tbody></table>';
+
+  l3 += '<h3 style="font-size:13px;margin:16px 0 8px;color:var(--navy)">Context Length &amp; Concurrent Sessions</h3>';
+  l3 += '<table><thead><tr><th>Segment</th><th class="num">Context (2028)</th><th class="num">Context (2031)</th><th class="num">Concurrent (2028)</th><th class="num">Concurrent (2031)</th></tr></thead><tbody>';
+  for (const [seg, label, cls] of [['consumer','Consumer','seg-consumer'],['enterprise','Enterprise','seg-enterprise'],['agentic','Agentic','seg-agentic']]) {
+    const cs28 = D.concurrentSessions[seg][sc][0];
+    const cs31 = D.concurrentSessions[seg][sc][1];
+    l3 += `<tr><td><span class="segment-label ${cls}">${label}</span></td><td class="num">${fmtNum(D.contextLength[seg][2028])}</td><td class="num">${fmtNum(D.contextLength[seg][2031])}</td><td class="num">${fmtNum(cs28)}</td><td class="num">${fmtNum(cs31)}</td></tr>`;
+  }
+  l3 += '</tbody></table>';
+
+  l3 += '<h3 style="font-size:13px;margin:16px 0 8px;color:var(--navy)">Total Transient KV Cache</h3>';
+  l3 += '<table><thead><tr><th>Segment</th><th class="num">2026</th><th class="num">2028</th><th class="num">2031</th></tr></thead><tbody>';
+  for (const [s, label, cls] of [['c','Consumer','seg-consumer'],['e','Enterprise','seg-enterprise'],['a','Agentic','seg-agentic']]) {
+    l3 += `<tr><td><span class="segment-label ${cls}">${label}</span></td><td class="num">${fmtEB(R[`kv_${s}_2026`]/1e18)}</td><td class="num">${fmtEB(R[`kv_${s}_2028`]/1e18)}</td><td class="num">${fmtEB(R[`kv_${s}_2031`]/1e18)}</td></tr>`;
+  }
+  l3 += `<tr class="total-row"><td></td><td class="num">${fmtEB(R.kv_total_2026/1e18)}</td><td class="num">${fmtEB(R.kv_total_2028/1e18)}</td><td class="num">${fmtEB(R.kv_total_2031/1e18)}</td></tr>`;
+  l3 += '</tbody></table>';
+  l3 += '<p class="note"><strong>Formula:</strong> KV_bytes_per_token = 2 × layers × KV_heads × head_dim × precision_bytes. Total KV = concurrent_sessions × context_tokens × bytes/token. Per-token KV decreases (GQA→MLA, FP8→FP4) but context lengths grow faster → total KV per session still grows.</p>';
+  document.getElementById('layer3-body').innerHTML = l3;
+
+  // Layer 4
+  let l4 = '<h3 style="font-size:13px;margin-bottom:8px;color:var(--navy)">Transient KV Cache — Memory Tier Distribution</h3>';
+  l4 += '<table><thead><tr><th>Tier</th><th class="num">2026</th><th class="num">% </th><th class="num">2028</th><th class="num">%</th><th class="num">2031</th><th class="num">%</th></tr></thead><tbody>';
+  for (const [tier, idx] of [['HBM (on-GPU)', 0],['DRAM (host)', 1],['NAND (SSD)', 2]]) {
+    l4 += `<tr><td>${tier}</td>`;
+    for (const yr of [2026,2028,2031]) {
+      const pct = D.memTierSplit[yr][idx];
+      const val = (R[`kv_total_${yr}`]/1e18) * pct;
+      l4 += `<td class="num">${fmtEB(val)}</td><td class="num" style="color:var(--text-muted)">${(pct*100).toFixed(0)}%</td>`;
+    }
+    l4 += '</tr>';
+  }
+  l4 += '</tbody></table>';
+
+  l4 += '<h3 style="font-size:13px;margin:16px 0 8px;color:var(--navy)">Persistent KV Cache → NAND</h3>';
+  l4 += '<table><thead><tr><th>Metric</th><th class="num">2028</th><th class="num">2031</th></tr></thead><tbody>';
+  l4 += `<tr><td>Consumer (5% sessions persist)</td><td class="num">${fmtEB(R.kv_persist_nand_2028 * 0.05/0.3)}</td><td class="num">${fmtEB(R.kv_persist_nand_2031 * 0.05/0.3)}</td></tr>`;
+  l4 += `<tr><td>Enterprise (30% sessions persist)</td><td class="num">${fmtEB(R.kv_persist_nand_2028 * 0.30/0.3)}</td><td class="num">${fmtEB(R.kv_persist_nand_2031 * 0.30/0.3)}</td></tr>`;
+  l4 += `<tr><td>Agentic (80% tasks reuse cached KV)</td><td class="num">${fmtEB(R.kv_persist_nand_2028 * 0.80/0.3)}</td><td class="num">${fmtEB(R.kv_persist_nand_2031 * 0.80/0.3)}</td></tr>`;
+  l4 += `<tr class="total-row"><td>Total persistent KV → NAND</td><td class="num">${fmtEB(R.kv_persist_nand_2028)}</td><td class="num">${fmtEB(R.kv_persist_nand_2031)}</td></tr>`;
+  l4 += '</tbody></table>';
+  l4 += '<p class="note"><strong>Rationale:</strong> As context grows faster than HBM capacity, KV cache spills to DRAM and NAND. LMCache-style offloading and multi-turn persistent contexts stored on SSD grow significantly by 2031.</p>';
+  document.getElementById('layer4-body').innerHTML = l4;
+
+  // Layer 5: RAG
+  let l5 = '<div class="two-year-grid"><div><h3>2028</h3><table><thead><tr><th>Segment</th><th>Users/Orgs/Agents w/ RAG</th><th class="num">Storage Each</th><th class="num">Total NAND</th></tr></thead><tbody>';
+  l5 += `<tr><td><span class="segment-label seg-consumer">Consumer</span></td><td class="num">${fmtNum(D.rag.consumer.users[sc][0])}</td><td class="num">${D.rag.consumer.storagePerUser[2028]} MB</td><td class="num">${fmtEB(R.rag_c_nand_2028)}</td></tr>`;
+  l5 += `<tr><td><span class="segment-label seg-enterprise">Enterprise</span></td><td class="num">${fmtNum(D.rag.enterprise.orgs[sc][0])}</td><td class="num">${(D.rag.enterprise.storagePerOrg[2028]/1e6).toFixed(0)} TB</td><td class="num">${fmtEB(R.rag_e_nand_2028)}</td></tr>`;
+  l5 += `<tr><td><span class="segment-label seg-agentic">Agentic</span></td><td class="num">${fmtNum(D.rag.agentic.instances[sc][0])}</td><td class="num">${D.rag.agentic.storagePerAgent[2028]} MB</td><td class="num">${fmtEB(R.rag_a_nand_2028)}</td></tr>`;
+  l5 += `<tr class="total-row"><td></td><td></td><td></td><td class="num">${fmtEB(R.rag_total_nand_2028)}</td></tr>`;
+  l5 += '</tbody></table></div>';
+
+  l5 += '<div><h3>2031</h3><table><thead><tr><th>Segment</th><th>Users/Orgs/Agents w/ RAG</th><th class="num">Storage Each</th><th class="num">Total NAND</th></tr></thead><tbody>';
+  l5 += `<tr><td><span class="segment-label seg-consumer">Consumer</span></td><td class="num">${fmtNum(D.rag.consumer.users[sc][1])}</td><td class="num">${(D.rag.consumer.storagePerUser[2031]/1000).toFixed(0)} GB</td><td class="num">${fmtEB(R.rag_c_nand_2031)}</td></tr>`;
+  l5 += `<tr><td><span class="segment-label seg-enterprise">Enterprise</span></td><td class="num">${fmtNum(D.rag.enterprise.orgs[sc][1])}</td><td class="num">${(D.rag.enterprise.storagePerOrg[2031]/1e6).toFixed(0)} TB</td><td class="num">${fmtEB(R.rag_e_nand_2031)}</td></tr>`;
+  l5 += `<tr><td><span class="segment-label seg-agentic">Agentic</span></td><td class="num">${fmtNum(D.rag.agentic.instances[sc][1])}</td><td class="num">${(D.rag.agentic.storagePerAgent[2031]/1000).toFixed(0)} GB</td><td class="num">${fmtEB(R.rag_a_nand_2031)}</td></tr>`;
+  l5 += `<tr class="total-row"><td></td><td></td><td></td><td class="num">${fmtEB(R.rag_total_nand_2031)}</td></tr>`;
+  l5 += '</tbody></table></div></div>';
+  l5 += `<p class="note" style="margin-top:12px"><strong>RAG DRAM hot tier</strong> (~10-15% of RAG in DRAM for low-latency serving): 2028: ${fmtEB(R.rag_total_dram_2028)} | 2031: ${fmtEB(R.rag_total_dram_2031)}</p>`;
+  document.getElementById('layer5-body').innerHTML = l5;
+
+  // Layer 6
+  const nk = D.nonKVRAG;
+  let l6 = '<table><thead><tr><th>Category</th><th class="num">2026</th><th class="num">2028</th><th class="num">2031</th></tr></thead><tbody>';
+  const cats = [
+    ['Model weights (all copies)', 'weights', 'modelWeights'],
+    ['Training data & checkpoints', 'training', 'trainingData'],
+    ['AI-generated content (images, video, code)', 'aigen', 'aiGenContent'],
+    ['Logs, telemetry, observability', 'logs', 'logsTelemetry'],
+    ['Fine-tuning data & adapters', 'finetune', 'finetuneData'],
+  ];
+  cats.forEach(([label, key, src]) => {
+    l6 += `<tr><td>${label}</td><td class="num">${nk[src][2026]} EB</td><td class="num">${R[`nk_${key}_2028`]} EB</td><td class="num">${R[`nk_${key}_2031`]} EB</td></tr>`;
+  });
+  l6 += `<tr class="total-row"><td>Total non-KV/RAG</td><td class="num">${R.nk_total_2026} EB</td><td class="num">${R.nk_total_2028} EB</td><td class="num">${R.nk_total_2031} EB</td></tr>`;
+  l6 += '</tbody></table>';
+  l6 += '<p class="note">Driven by model proliferation, synthetic data generation, and regulatory retention. Video generation is particularly NAND-intensive in the bull case.</p>';
+  document.getElementById('layer6-body').innerHTML = l6;
+
+  // Layer 7
+  let l7 = '<table style="max-width:600px"><thead><tr><th>Factor</th><th class="num">Value</th><th>Rationale</th></tr></thead><tbody>';
+  l7 += `<tr><td>Data replication</td><td class="num">3x</td><td>Cloud standard durability + availability</td></tr>`;
+  l7 += `<tr><td>Geographic distribution</td><td class="num">1.5x</td><td>Multi-region latency requirements</td></tr>`;
+  l7 += `<tr><td>Backup/snapshot</td><td class="num">1.2x</td><td>Point-in-time recovery</td></tr>`;
+  l7 += `<tr class="total-row"><td>Combined multiplier (${scLabel})</td><td class="num">${R.replMult}x</td><td>Applied to persistent data (RAG + non-KV/RAG). Not applied to transient KV.</td></tr>`;
+  l7 += '</tbody></table>';
+  l7 += '<p class="note">Bull case uses 3.5x due to stricter geo-distribution requirements and compliance overhead. Bear case assumes more efficient deduplication (2.5x).</p>';
+  document.getElementById('layer7-body').innerHTML = l7;
+
+  // Summary
+  let sm = '<div class="summary-grid">';
+  sm += `<div class="summary-box"><h3>AI DRAM Demand</h3><div class="big-num">${fmtEB(R.ai_dram_2028)}</div><div class="sub-num">2028</div><div class="big-num" style="margin-top:8px">${fmtEB(R.ai_dram_2031)}</div><div class="sub-num">2031</div></div>`;
+  sm += `<div class="summary-box"><h3>AI NAND Demand</h3><div class="big-num">${fmtEB(R.ai_nand_2028)}</div><div class="sub-num">2028</div><div class="big-num" style="margin-top:8px">${fmtEB(R.ai_nand_2031)}</div><div class="sub-num">2031</div></div>`;
+  sm += '</div>';
+
+  sm += '<table style="color:#e2e8f0"><thead><tr style="border-color:rgba(255,255,255,0.2)"><th style="color:#94a3c4">Component</th><th class="num" style="color:#94a3c4">DRAM 2028</th><th class="num" style="color:#94a3c4">NAND 2028</th><th class="num" style="color:#94a3c4">DRAM 2031</th><th class="num" style="color:#94a3c4">NAND 2031</th></tr></thead><tbody>';
+  sm += `<tr><td>Transient KV Cache (DRAM tier)</td><td class="num">${fmtEB(R.kv_dram_2028)}</td><td class="num">—</td><td class="num">${fmtEB(R.kv_dram_2031)}</td><td class="num">—</td></tr>`;
+  sm += `<tr><td>Transient KV Cache (NAND tier)</td><td class="num">—</td><td class="num">${fmtEB(R.kv_nand_2028)}</td><td class="num">—</td><td class="num">${fmtEB(R.kv_nand_2031)}</td></tr>`;
+  sm += `<tr><td>Persistent KV Cache → NAND</td><td class="num">—</td><td class="num">${fmtEB(R.kv_persist_nand_2028 * R.replMult)}</td><td class="num">—</td><td class="num">${fmtEB(R.kv_persist_nand_2031 * R.replMult)}</td></tr>`;
+  sm += `<tr><td>RAG Storage</td><td class="num">${fmtEB(R.rag_total_dram_2028)}</td><td class="num">${fmtEB(R.rag_total_nand_2028 * R.replMult)}</td><td class="num">${fmtEB(R.rag_total_dram_2031)}</td><td class="num">${fmtEB(R.rag_total_nand_2031 * R.replMult)}</td></tr>`;
+  sm += `<tr><td>Non-KV/RAG (weights, training, gen content)</td><td class="num">—</td><td class="num">${fmtEB(R.nk_total_2028 * R.replMult)}</td><td class="num">—</td><td class="num">${fmtEB(R.nk_total_2031 * R.replMult)}</td></tr>`;
+  sm += `<tr><td>Server DRAM overhead (20%)</td><td class="num">${fmtEB(R.ai_dram_2028 - (R.kv_dram_2028 + R.rag_total_dram_2028))}</td><td class="num">—</td><td class="num">${fmtEB(R.ai_dram_2031 - (R.kv_dram_2031 + R.rag_total_dram_2031))}</td><td class="num">—</td></tr>`;
+  sm += `<tr style="border-top:2px solid rgba(255,255,255,0.3)"><td style="font-weight:800">TOTAL AI DEMAND</td><td class="num" style="font-weight:800;font-size:14px">${fmtEB(R.ai_dram_2028)}</td><td class="num" style="font-weight:800;font-size:14px">${fmtEB(R.ai_nand_2028)}</td><td class="num" style="font-weight:800;font-size:14px">${fmtEB(R.ai_dram_2031)}</td><td class="num" style="font-weight:800;font-size:14px">${fmtEB(R.ai_nand_2031)}</td></tr>`;
+  sm += '</tbody></table>';
+  document.getElementById('summary-body').innerHTML = sm;
+
+  // Waterfall
+  let wf = '<div class="year-tabs">';
+  wf += `<div class="year-tab ${viewYear===2028?'active':''}" onclick="setWaterfallYear(2028)">2028</div>`;
+  wf += `<div class="year-tab ${viewYear===2031?'active':''}" onclick="setWaterfallYear(2031)">2031</div>`;
+  wf += '</div>';
+
+  const yr = viewYear;
+  const totalSupply = R[`nand_supply_${yr}`];
+  const smartphone = R[`nand_smartphone_${yr}`];
+  const consumerPC = R[`nand_consumerPC_${yr}`];
+  const other = R[`nand_other_${yr}`];
+  const nonAIEnt = R[`nand_nonAI_ent_${yr}`];
+  const availAI = R[`nand_avail_ai_${yr}`];
+  const aiDemand = R[`ai_nand_${yr}`];
+  const surplus = R[`nand_surplus_${yr}`];
+  const surplusPct = R[`nand_surplus_pct_${yr}`];
+
+  // Table
+  wf += '<table><thead><tr><th></th><th class="num">EB</th><th class="num">% of Supply</th></tr></thead><tbody>';
+  wf += `<tr><td style="font-weight:700">Total NAND Supply (${yr})</td><td class="num" style="font-weight:700">${fmtEB(totalSupply)}</td><td class="num">100%</td></tr>`;
+  wf += `<tr><td>&minus; Smartphones</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(smartphone)}</td><td class="num">${(smartphone/totalSupply*100).toFixed(1)}%</td></tr>`;
+  wf += `<tr><td>&minus; Consumer PCs / SSDs</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(consumerPC)}</td><td class="num">${(consumerPC/totalSupply*100).toFixed(1)}%</td></tr>`;
+  wf += `<tr><td>&minus; Other (embedded, automotive)</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(other)}</td><td class="num">${(other/totalSupply*100).toFixed(1)}%</td></tr>`;
+  wf += `<tr><td>&minus; Non-AI Enterprise / DC</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(nonAIEnt)}</td><td class="num">${(nonAIEnt/totalSupply*100).toFixed(1)}%</td></tr>`;
+  wf += `<tr class="subtotal-row"><td>= Available for AI</td><td class="num" style="color:#8b5cf6;font-weight:700">${fmtEB(availAI)}</td><td class="num">${(availAI/totalSupply*100).toFixed(1)}%</td></tr>`;
+  wf += `<tr><td>&minus; AI NAND Demand (this model)</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(aiDemand)}</td><td class="num">${(aiDemand/totalSupply*100).toFixed(1)}%</td></tr>`;
+
+  const surplusColor = surplus >= 0 ? 'var(--surplus)' : 'var(--deficit)';
+  const surplusLabel = surplus >= 0 ? 'SURPLUS' : 'DEFICIT';
+  wf += `<tr class="total-row"><td style="font-size:14px">${surplusLabel}</td><td class="num" style="color:${surplusColor};font-size:16px;font-weight:800">${surplus >= 0 ? '' : '('}${fmtEB(Math.abs(surplus))}${surplus >= 0 ? '' : ')'}</td><td class="num" style="color:${surplusColor};font-size:14px;font-weight:800">${fmtPct(surplusPct)}</td></tr>`;
+  wf += '</tbody></table>';
+
+  // Waterfall bar chart
+  const maxVal = totalSupply;
+  function barPct(v) { return Math.max(2, Math.abs(v) / maxVal * 100); }
+
+  wf += '<div class="waterfall-chart" style="margin-top:20px">';
+  // Supply bar
+  wf += `<div class="wf-row"><div class="wf-label">Total NAND Supply</div><div class="wf-bar-container"><div class="wf-bar total-bar" style="left:0;width:${barPct(totalSupply)}%">${Math.round(totalSupply)} EB</div></div></div>`;
+
+  // Deductions
+  let running = totalSupply;
+  const deductions = [
+    ['Smartphones', smartphone],
+    ['Consumer PC/SSD', consumerPC],
+    ['Other (embedded/auto)', other],
+    ['Non-AI Enterprise', nonAIEnt]
+  ];
+  deductions.forEach(([label, val]) => {
+    const left = (running - val) / maxVal * 100;
+    wf += `<div class="wf-row"><div class="wf-label">&minus; ${label}</div><div class="wf-bar-container"><div class="wf-bar negative" style="left:${Math.max(0,left)}%;width:${barPct(val)}%">${Math.round(val)}</div></div></div>`;
+    running -= val;
+  });
+
+  // Available
+  wf += '<div class="wf-divider"></div>';
+  wf += `<div class="wf-row"><div class="wf-label" style="font-weight:700">Available for AI</div><div class="wf-bar-container"><div class="wf-bar available" style="left:0;width:${barPct(availAI)}%">${Math.round(availAI)} EB</div></div></div>`;
+
+  // AI Demand
+  wf += `<div class="wf-row"><div class="wf-label">&minus; AI NAND Demand</div><div class="wf-bar-container"><div class="wf-bar demand-bar" style="left:${Math.max(0, (availAI - aiDemand)/ maxVal * 100)}%;width:${barPct(aiDemand)}%">${Math.round(aiDemand)}</div></div></div>`;
+
+  // Surplus/Deficit
+  wf += '<div class="wf-divider"></div>';
+  if (surplus >= 0) {
+    wf += `<div class="wf-row"><div class="wf-label" style="font-weight:800;color:var(--surplus)">SURPLUS</div><div class="wf-bar-container"><div class="wf-bar surplus-bar" style="left:0;width:${barPct(surplus)}%">${Math.round(surplus)} EB</div></div></div>`;
+  } else {
+    wf += `<div class="wf-row"><div class="wf-label" style="font-weight:800;color:var(--deficit)">DEFICIT</div><div class="wf-bar-container"><div class="wf-bar deficit-bar" style="left:0;width:${barPct(surplus)}%">(${Math.round(Math.abs(surplus))}) EB</div></div></div>`;
+  }
+  wf += '</div>';
+
+  // DRAM summary
+  wf += '<h3 style="font-size:13px;margin:20px 0 8px;color:var(--navy)">DRAM Supply Check (' + yr + ')</h3>';
+  const dramSupply = R[`dram_supply_${yr}`];
+  const dramServer = R[`dram_server_${yr}`];
+  const dramAIAvail = R[`dram_ai_avail_${yr}`];
+  const dramDemand = R[`ai_dram_${yr}`];
+  const dramSurplus = R[`dram_surplus_${yr}`];
+  const dramSurplusColor = dramSurplus >= 0 ? 'var(--surplus)' : 'var(--deficit)';
+  wf += '<table style="max-width:700px"><thead><tr><th></th><th class="num">EB</th></tr></thead><tbody>';
+  wf += `<tr><td>Total DRAM Supply</td><td class="num">${fmtEB(dramSupply)}</td></tr>`;
+  wf += `<tr><td>Server DRAM (${(D.dramSupply.serverPct[yr]*100).toFixed(0)}%)</td><td class="num">${fmtEB(dramServer)}</td></tr>`;
+  wf += `<tr><td>AI share of server DRAM (${(D.dramSupply.aiSharePct[yr]*100).toFixed(0)}%)</td><td class="num">${fmtEB(dramAIAvail)}</td></tr>`;
+  wf += `<tr><td>AI DRAM Demand (this model)</td><td class="num">${fmtEB(dramDemand)}</td></tr>`;
+  wf += `<tr class="total-row"><td>${dramSurplus >= 0 ? 'SURPLUS' : 'DEFICIT'}</td><td class="num" style="color:${dramSurplusColor};font-weight:800">${dramSurplus >= 0 ? '' : '('}${fmtEB(Math.abs(dramSurplus))}${dramSurplus >= 0 ? '' : ')'}</td></tr>`;
+  wf += '</tbody></table>';
+
+  document.getElementById('waterfall-body').innerHTML = wf;
+}
+
+// Initialize
+render();
+</script>
+</body>
+</html>
