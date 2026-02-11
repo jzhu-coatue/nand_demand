@@ -163,6 +163,10 @@ tr.subtotal-row td {
 .summary-card .card-header h2 .step-badge { background: rgba(255,255,255,0.2); }
 .summary-card .card-header .chevron { color: rgba(255,255,255,0.7); }
 .summary-card .card-body { color: #e2e8f0; }
+.summary-card td { background: transparent !important; border-bottom-color: rgba(255,255,255,0.1) !important; }
+.summary-card tr:nth-child(even) td { background: rgba(255,255,255,0.04) !important; }
+.summary-card tr.total-row td { background: rgba(255,255,255,0.10) !important; border-top-color: rgba(255,255,255,0.3) !important; border-bottom-color: rgba(255,255,255,0.3) !important; }
+.summary-card th { color: #94a3c4 !important; border-bottom-color: rgba(255,255,255,0.2) !important; }
 .summary-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -329,7 +333,7 @@ footer strong { color: var(--text); }
   <!-- Layer 2: Token Volume -->
   <div class="card open" id="card-layer2">
     <div class="card-header" onclick="toggleCard('card-layer2')">
-      <h2><span class="step-badge">STEP 2</span> Daily Token Volume</h2>
+      <h2><span class="step-badge">STEP 2</span> Token Intensity by Segment</h2>
       <svg class="chevron" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg>
     </div>
     <div class="card-body" id="layer2-body"></div>
@@ -448,10 +452,20 @@ const D = {
     enterprise: { 2026: 8000, 2028: 32000, 2031: 128000 },
     agentic: { 2026: 32000, 2028: 128000, 2031: 512000 }
   },
-  concurrentSessions: {
-    consumer:   { _2026: 1e6, bear: [2e6, 5e6], base: [5e6, 15e6], bull: [10e6, 40e6] },
-    enterprise: { _2026: 500e3, bear: [2e6, 10e6], base: [5e6, 30e6], bull: [10e6, 80e6] },
-    agentic:    { _2026: 1e6, bear: [5e6, 20e6], base: [15e6, 60e6], bull: [30e6, 150e6] }
+  concurrencyParams: {
+    consumer: {
+      sessionsPerDay:        { 2026: 2.5, 2028: 3.5, 2031: 5.0 },
+      avgSessionDurationSec: { 2026: 150, 2028: 270, 2031: 270 },
+      peakFactor: 1.3
+    },
+    enterprise: {
+      effectiveKVHoldSec:    { 2026: 6.0, 2028: 3.0, 2031: 2.0 },
+      peakFactor: 1.5
+    },
+    agentic: {
+      kvHoldPerTaskSec:      { 2026: 180, 2028: 55, 2031: 20 },
+      peakFactor: 1.2
+    }
   },
 
   // ---- Layer 4: Memory Hierarchy ----
@@ -573,26 +587,41 @@ function compute(sc) {
   R.a_inst_28 = a.instances[sc][0]; R.a_inst_31 = a.instances[sc][1];
   R.a_tasks_28 = a.tasksPerDay[sc][0]; R.a_tasks_31 = a.tasksPerDay[sc][1];
 
-  // Layer 2: daily tokens
-  R.c_dtok_26 = R.c_dau_26 * c.queriesPerDAU[2026] * D.tokensPerQuery.consumer[2026];
-  R.c_dtok_28 = R.c_dau_28 * c.queriesPerDAU[2028] * D.tokensPerQuery.consumer[2028];
-  R.c_dtok_31 = R.c_dau_31 * c.queriesPerDAU[2031] * D.tokensPerQuery.consumer[2031];
+  // Layer 2: Token intensity per entity (replaces daily token volume)
+  for (const yr of [2026, 2028, 2031]) {
+    R[`ti_c_daily_${yr}`] = c.queriesPerDAU[yr] * D.tokensPerQuery.consumer[yr];
+    const eCallsPerOrg = yr === 2026 ? e.callsPerOrgDay_2026 : (yr === 2028 ? R.e_calls_28 : R.e_calls_31);
+    R[`ti_e_daily_${yr}`] = eCallsPerOrg * D.tokensPerQuery.enterprise[yr];
+    const aTasksPerDay = yr === 2026 ? a.tasksPerDay_2026 : (yr === 2028 ? R.a_tasks_28 : R.a_tasks_31);
+    R[`ti_a_daily_${yr}`] = aTasksPerDay * D.tokensPerQuery.agentic[yr];
+    R[`ti_ratio_ac_${yr}`] = R[`ti_a_daily_${yr}`] / R[`ti_c_daily_${yr}`];
+    R[`ti_query_ratio_ec_${yr}`] = D.tokensPerQuery.enterprise[yr] / D.tokensPerQuery.consumer[yr];
+    R[`ti_query_ratio_ac_${yr}`] = D.tokensPerQuery.agentic[yr] / D.tokensPerQuery.consumer[yr];
+    R[`interactions_c_${yr}`] = c.queriesPerDAU[yr];
+    R[`interactions_e_${yr}`] = eCallsPerOrg;
+    R[`interactions_a_${yr}`] = aTasksPerDay;
+  }
 
-  R.e_dtok_26 = e.orgs_2026 * e.callsPerOrgDay_2026 * D.tokensPerQuery.enterprise[2026];
-  R.e_dtok_28 = R.e_orgs_28 * R.e_calls_28 * D.tokensPerQuery.enterprise[2028];
-  R.e_dtok_31 = R.e_orgs_31 * R.e_calls_31 * D.tokensPerQuery.enterprise[2031];
-
-  R.a_dtok_26 = a.instances_2026 * a.tasksPerDay_2026 * D.tokensPerQuery.agentic[2026];
-  R.a_dtok_28 = R.a_inst_28 * R.a_tasks_28 * D.tokensPerQuery.agentic[2028];
-  R.a_dtok_31 = R.a_inst_31 * R.a_tasks_31 * D.tokensPerQuery.agentic[2031];
-
-  R.total_dtok_26 = R.c_dtok_26 + R.e_dtok_26 + R.a_dtok_26;
-  R.total_dtok_28 = R.c_dtok_28 + R.e_dtok_28 + R.a_dtok_28;
-  R.total_dtok_31 = R.c_dtok_31 + R.e_dtok_31 + R.a_dtok_31;
+  // Derive concurrent sessions from Layer 1 user base
+  const cp = D.concurrencyParams;
+  for (const yr of [2026, 2028, 2031]) {
+    // Consumer: DAU × sessionsPerDay × avgSessionDurationSec / 86400 × peakFactor
+    const cDAU = yr === 2026 ? R.c_dau_26 : (yr === 2028 ? R.c_dau_28 : R.c_dau_31);
+    R[`cs_c_${yr}`] = cDAU * cp.consumer.sessionsPerDay[yr] * cp.consumer.avgSessionDurationSec[yr] / 86400 * cp.consumer.peakFactor;
+    // Enterprise: (orgs × callsPerOrg) × effectiveKVHoldSec / 86400 × peakFactor
+    const eOrgs = yr === 2026 ? e.orgs_2026 : (yr === 2028 ? R.e_orgs_28 : R.e_orgs_31);
+    const eCalls = yr === 2026 ? e.callsPerOrgDay_2026 : (yr === 2028 ? R.e_calls_28 : R.e_calls_31);
+    R[`cs_e_${yr}`] = (eOrgs * eCalls) * cp.enterprise.effectiveKVHoldSec[yr] / 86400 * cp.enterprise.peakFactor;
+    // Agentic: (instances × tasksPerDay) × kvHoldPerTaskSec / 86400 × peakFactor
+    const aInst = yr === 2026 ? a.instances_2026 : (yr === 2028 ? R.a_inst_28 : R.a_inst_31);
+    const aTasks = yr === 2026 ? a.tasksPerDay_2026 : (yr === 2028 ? R.a_tasks_28 : R.a_tasks_31);
+    R[`cs_a_${yr}`] = (aInst * aTasks) * cp.agentic.kvHoldPerTaskSec[yr] / 86400 * cp.agentic.peakFactor;
+    R[`cs_total_${yr}`] = R[`cs_c_${yr}`] + R[`cs_e_${yr}`] + R[`cs_a_${yr}`];
+  }
 
   // Layer 3: KV cache total (bytes)
   function kvTotal(seg, yr) {
-    const cs = yr === 2026 ? D.concurrentSessions[seg]._2026 : D.concurrentSessions[seg][sc][yr === 2028 ? 0 : 1];
+    const cs = R[`cs_${seg.charAt(0)}_${yr}`];
     const ctx = D.contextLength[seg][yr];
     const bpt = D.kvBytesPerToken[seg][yr]; // MB
     return cs * ctx * bpt * 1e6; // bytes
@@ -735,6 +764,7 @@ function render() {
     ['Consumer AI DAU growth', { bear:'15% CAGR', base:'25% CAGR', bull:'35% CAGR' }],
     ['Enterprise AI API adoption', { bear:'Gradual (linear)', base:'S-curve inflection 2027', bull:'Rapid universal adoption' }],
     ['Agentic AI scale', { bear:'Slow rollout, narrow use', base:'Broad rollout, multi-domain', bull:'Ubiquitous, always-on agents' }],
+    ['Peak concurrency model', { bear:'Derived from DAU × session params', base:'Derived from DAU × session params', bull:'Derived from DAU × session params' }],
     ['Avg context length growth', { bear:'2x every 3 years', base:'4x every 3 years', bull:'8x every 3 years' }],
     ['KV cache efficiency gains', { bear:'Aggressive (MLA, FP4, 90%)', base:'Moderate (FP4, 60%)', bull:'Minimal improvement' }],
     ['RAG adoption depth', { bear:'Shallow (few docs)', base:'Moderate (deep KBs)', bull:'Deep (full org memory)' }],
@@ -770,19 +800,38 @@ function render() {
   l1 += `<tr><td><span class="segment-label seg-agentic">Agentic</span></td><td>Active agent instances</td><td class="num">${fmtNum(D.agentic.instances_2026)}</td><td class="num">${fmtNum(R.a_inst_28)}</td><td class="num">${fmtNum(R.a_inst_31)}</td></tr>`;
   l1 += `<tr><td></td><td>Avg tasks / agent / day</td><td class="num">${D.agentic.tasksPerDay_2026}</td><td class="num">${fmtNum(R.a_tasks_28)}</td><td class="num">${fmtNum(R.a_tasks_31)}</td></tr>`;
   l1 += '</tbody></table>';
-  l1 += '<p class="note"><strong>Bear/Base/Bull driver:</strong> Adoption speed and usage intensity per user/org/agent. Sources: ChatGPT ~900M WAU (DemandSage); McKinsey 65% enterprise adoption; Salesforce/IBM 1B agents by 2026.</p>';
+
+  // Derived Concurrent Sessions sub-table
+  const cp = D.concurrencyParams;
+  l1 += '<h3 style="font-size:13px;margin:16px 0 8px;color:var(--navy)">Derived Concurrent Sessions (Peak)</h3>';
+  l1 += '<table><thead><tr><th>Segment</th><th>Formula</th><th class="num">2026</th><th class="num">2028</th><th class="num">2031</th></tr></thead><tbody>';
+  l1 += `<tr><td><span class="segment-label seg-consumer">Consumer</span></td><td style="font-size:11px;color:var(--text-muted)">DAU × ${cp.consumer.sessionsPerDay[2028]} sess/day × ${cp.consumer.avgSessionDurationSec[2028]}s / 86400 × ${cp.consumer.peakFactor}x peak</td><td class="num">${fmtNum(R.cs_c_2026)}</td><td class="num">${fmtNum(R.cs_c_2028)}</td><td class="num">${fmtNum(R.cs_c_2031)}</td></tr>`;
+  l1 += `<tr><td><span class="segment-label seg-enterprise">Enterprise</span></td><td style="font-size:11px;color:var(--text-muted)">(orgs × calls/org) × ${cp.enterprise.effectiveKVHoldSec[2028]}s hold / 86400 × ${cp.enterprise.peakFactor}x peak</td><td class="num">${fmtNum(R.cs_e_2026)}</td><td class="num">${fmtNum(R.cs_e_2028)}</td><td class="num">${fmtNum(R.cs_e_2031)}</td></tr>`;
+  l1 += `<tr><td><span class="segment-label seg-agentic">Agentic</span></td><td style="font-size:11px;color:var(--text-muted)">(instances × tasks/day) × ${cp.agentic.kvHoldPerTaskSec[2028]}s hold / 86400 × ${cp.agentic.peakFactor}x peak</td><td class="num">${fmtNum(R.cs_a_2026)}</td><td class="num">${fmtNum(R.cs_a_2028)}</td><td class="num">${fmtNum(R.cs_a_2031)}</td></tr>`;
+  l1 += `<tr class="total-row"><td></td><td>Total concurrent sessions</td><td class="num">${fmtNum(R.cs_total_2026)}</td><td class="num">${fmtNum(R.cs_total_2028)}</td><td class="num">${fmtNum(R.cs_total_2031)}</td></tr>`;
+  l1 += '</tbody></table>';
+
+  l1 += '<p class="note"><strong>Bear/Base/Bull driver:</strong> Adoption speed and usage intensity per user/org/agent. Concurrency parameters (sessions/day, hold times, peak factors) are scenario-invariant — per-user behavior is the same regardless of how many users exist. Sources: ChatGPT ~900M WAU (DemandSage); McKinsey 65% enterprise adoption; Salesforce/IBM 1B agents by 2026.</p>';
   document.getElementById('layer1-body').innerHTML = l1;
 
-  // Layer 2
-  let l2 = '<table><thead><tr><th>Segment</th><th>Metric</th><th class="num">2026</th><th class="num">2028</th><th class="num">2031</th></tr></thead><tbody>';
-  l2 += `<tr><td><span class="segment-label seg-consumer">Consumer</span></td><td>Tokens / query (in+out)</td><td class="num">${fmtNum(D.tokensPerQuery.consumer[2026])}</td><td class="num">${fmtNum(D.tokensPerQuery.consumer[2028])}</td><td class="num">${fmtNum(D.tokensPerQuery.consumer[2031])}</td></tr>`;
-  l2 += `<tr><td></td><td>Daily tokens (all users)</td><td class="num">${fmtTokens(R.c_dtok_26)}</td><td class="num">${fmtTokens(R.c_dtok_28)}</td><td class="num">${fmtTokens(R.c_dtok_31)}</td></tr>`;
+  // Layer 2: Token Intensity
+  let l2 = '<h3 style="font-size:13px;margin-bottom:8px;color:var(--navy)">Per-Interaction Token Intensity</h3>';
+  l2 += '<table><thead><tr><th>Segment</th><th>Interaction Type</th><th class="num">2026</th><th class="num">2028</th><th class="num">2031</th></tr></thead><tbody>';
+  l2 += `<tr><td><span class="segment-label seg-consumer">Consumer</span></td><td>Tokens / query</td><td class="num">${fmtNum(D.tokensPerQuery.consumer[2026])}</td><td class="num">${fmtNum(D.tokensPerQuery.consumer[2028])}</td><td class="num">${fmtNum(D.tokensPerQuery.consumer[2031])}</td></tr>`;
   l2 += `<tr><td><span class="segment-label seg-enterprise">Enterprise</span></td><td>Tokens / API call</td><td class="num">${fmtNum(D.tokensPerQuery.enterprise[2026])}</td><td class="num">${fmtNum(D.tokensPerQuery.enterprise[2028])}</td><td class="num">${fmtNum(D.tokensPerQuery.enterprise[2031])}</td></tr>`;
-  l2 += `<tr><td></td><td>Daily tokens (all orgs)</td><td class="num">${fmtTokens(R.e_dtok_26)}</td><td class="num">${fmtTokens(R.e_dtok_28)}</td><td class="num">${fmtTokens(R.e_dtok_31)}</td></tr>`;
   l2 += `<tr><td><span class="segment-label seg-agentic">Agentic</span></td><td>Tokens / task</td><td class="num">${fmtNum(D.tokensPerQuery.agentic[2026])}</td><td class="num">${fmtNum(D.tokensPerQuery.agentic[2028])}</td><td class="num">${fmtNum(D.tokensPerQuery.agentic[2031])}</td></tr>`;
-  l2 += `<tr><td></td><td>Daily tokens (all agents)</td><td class="num">${fmtTokens(R.a_dtok_26)}</td><td class="num">${fmtTokens(R.a_dtok_28)}</td><td class="num">${fmtTokens(R.a_dtok_31)}</td></tr>`;
-  l2 += `<tr class="total-row"><td></td><td>TOTAL daily tokens</td><td class="num">${fmtTokens(R.total_dtok_26)}</td><td class="num">${fmtTokens(R.total_dtok_28)}</td><td class="num">${fmtTokens(R.total_dtok_31)}</td></tr>`;
+  l2 += `<tr class="subtotal-row"><td></td><td><strong>Enterprise vs Consumer</strong></td><td class="num"><strong>${Math.round(R.ti_query_ratio_ec_2026)}x</strong></td><td class="num"><strong>${Math.round(R.ti_query_ratio_ec_2028)}x</strong></td><td class="num"><strong>${Math.round(R.ti_query_ratio_ec_2031)}x</strong></td></tr>`;
+  l2 += `<tr class="subtotal-row"><td></td><td><strong>Agentic vs Consumer</strong></td><td class="num"><strong>${Math.round(R.ti_query_ratio_ac_2026)}x</strong></td><td class="num"><strong>${Math.round(R.ti_query_ratio_ac_2028)}x</strong></td><td class="num"><strong>${Math.round(R.ti_query_ratio_ac_2031)}x</strong></td></tr>`;
   l2 += '</tbody></table>';
+
+  l2 += '<h3 style="font-size:13px;margin:16px 0 8px;color:var(--navy)">Daily Token Footprint Per Active Entity</h3>';
+  l2 += '<table><thead><tr><th>Segment</th><th>Interactions / day</th><th>Tokens / interaction</th><th class="num">2026</th><th class="num">2028</th><th class="num">2031</th></tr></thead><tbody>';
+  l2 += `<tr><td><span class="segment-label seg-consumer">Consumer</span> <span style="color:var(--text-muted);font-size:11px">(per user)</span></td><td class="num">${fmtNum(R.interactions_c_2026)}→${fmtNum(R.interactions_c_2031)} queries</td><td class="num">${fmtNum(D.tokensPerQuery.consumer[2026])}→${fmtNum(D.tokensPerQuery.consumer[2031])}</td><td class="num"><strong>${fmtNum(R.ti_c_daily_2026)}</strong></td><td class="num"><strong>${fmtNum(R.ti_c_daily_2028)}</strong></td><td class="num"><strong>${fmtNum(R.ti_c_daily_2031)}</strong></td></tr>`;
+  l2 += `<tr><td><span class="segment-label seg-enterprise">Enterprise</span> <span style="color:var(--text-muted);font-size:11px">(per org)</span></td><td class="num">${fmtNum(R.interactions_e_2026)}→${fmtNum(R.interactions_e_2031)} calls</td><td class="num">${fmtNum(D.tokensPerQuery.enterprise[2026])}→${fmtNum(D.tokensPerQuery.enterprise[2031])}</td><td class="num"><strong>${fmtNum(R.ti_e_daily_2026)}</strong></td><td class="num"><strong>${fmtNum(R.ti_e_daily_2028)}</strong></td><td class="num"><strong>${fmtNum(R.ti_e_daily_2031)}</strong></td></tr>`;
+  l2 += `<tr><td><span class="segment-label seg-agentic">Agentic</span> <span style="color:var(--text-muted);font-size:11px">(per agent)</span></td><td class="num">${fmtNum(R.interactions_a_2026)}→${fmtNum(R.interactions_a_2031)} tasks</td><td class="num">${fmtNum(D.tokensPerQuery.agentic[2026])}→${fmtNum(D.tokensPerQuery.agentic[2031])}</td><td class="num"><strong>${fmtNum(R.ti_a_daily_2026)}</strong></td><td class="num"><strong>${fmtNum(R.ti_a_daily_2028)}</strong></td><td class="num"><strong>${fmtNum(R.ti_a_daily_2031)}</strong></td></tr>`;
+  l2 += `<tr class="subtotal-row"><td></td><td colspan="2"><strong>Agentic vs Consumer (daily)</strong></td><td class="num"><strong>${Math.round(R.ti_ratio_ac_2026)}x</strong></td><td class="num"><strong>${Math.round(R.ti_ratio_ac_2028)}x</strong></td><td class="num"><strong>${Math.round(R.ti_ratio_ac_2031)}x</strong></td></tr>`;
+  l2 += '</tbody></table>';
+  l2 += '<p class="note"><strong>Key insight:</strong> Per interaction, one agentic task is ~' + Math.round(R.ti_query_ratio_ac_2028) + 'x a consumer query. But agents also run ' + Math.round(R.interactions_a_2028 / R.interactions_c_2028) + 'x more interactions per day, compounding to ' + Math.round(R.ti_ratio_ac_2028) + '-' + Math.round(R.ti_ratio_ac_2031) + 'x daily token load per entity. This is why agents drive disproportionate memory demand despite fewer instances than consumer DAU.</p>';
   document.getElementById('layer2-body').innerHTML = l2;
 
   // Layer 3: KV Cache
@@ -796,8 +845,8 @@ function render() {
   l3 += '<h3 style="font-size:13px;margin:16px 0 8px;color:var(--navy)">Context Length &amp; Concurrent Sessions</h3>';
   l3 += '<table><thead><tr><th>Segment</th><th class="num">Context (2028)</th><th class="num">Context (2031)</th><th class="num">Concurrent (2028)</th><th class="num">Concurrent (2031)</th></tr></thead><tbody>';
   for (const [seg, label, cls] of [['consumer','Consumer','seg-consumer'],['enterprise','Enterprise','seg-enterprise'],['agentic','Agentic','seg-agentic']]) {
-    const cs28 = D.concurrentSessions[seg][sc][0];
-    const cs31 = D.concurrentSessions[seg][sc][1];
+    const cs28 = R[`cs_${seg.charAt(0)}_2028`];
+    const cs31 = R[`cs_${seg.charAt(0)}_2031`];
     l3 += `<tr><td><span class="segment-label ${cls}">${label}</span></td><td class="num">${fmtNum(D.contextLength[seg][2028])}</td><td class="num">${fmtNum(D.contextLength[seg][2031])}</td><td class="num">${fmtNum(cs28)}</td><td class="num">${fmtNum(cs31)}</td></tr>`;
   }
   l3 += '</tbody></table>';
