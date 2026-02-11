@@ -221,7 +221,7 @@ tr.subtotal-row td {
   margin-bottom: 6px;
   font-size: 13px;
 }
-.wf-label { width: 220px; flex-shrink: 0; font-weight: 500; }
+.wf-label { min-width: 220px; width: auto; flex-shrink: 0; font-weight: 500; white-space: nowrap; padding-right: 12px; }
 .wf-bar-container { flex: 1; height: 28px; position: relative; }
 .wf-bar {
   height: 100%;
@@ -236,6 +236,8 @@ tr.subtotal-row td {
   font-weight: 600;
   color: #fff;
   min-width: 50px;
+  white-space: nowrap;
+  overflow: visible;
   transition: width 0.4s ease, left 0.4s ease;
 }
 .wf-val { width: 120px; text-align: right; flex-shrink: 0; font-family: 'SF Mono', Menlo, monospace; font-weight: 600; font-size: 12.5px; margin-left: 8px; }
@@ -304,6 +306,43 @@ footer strong { color: var(--text); }
   margin-bottom: 8px;
   padding-bottom: 4px;
   border-bottom: 2px solid var(--navy);
+}
+.opt-card { border: 2px solid #8b5cf6; }
+.opt-card .card-header h2 .step-badge { background: #8b5cf6; }
+.opt-factor-input {
+  width: 60px; text-align: center;
+  font-family: 'SF Mono', Menlo, monospace; font-size: 12px;
+  border: 1px solid var(--border); border-radius: 3px;
+  padding: 2px 6px; background: #fffef0;
+}
+.opt-factor-input:focus { border-color: #8b5cf6; outline: none; box-shadow: 0 0 0 2px #ede9fe; }
+.opt-check { width: 16px; height: 16px; cursor: pointer; accent-color: #8b5cf6; }
+.opt-combined {
+  display: flex; gap: 24px; margin: 16px 0; padding: 12px 16px;
+  background: #f5f3ff; border-radius: 8px; border: 1px solid #e0d9fa;
+  font-size: 13px; font-weight: 600; color: var(--navy);
+}
+.opt-combined .factor-val {
+  font-family: 'SF Mono', Menlo, monospace; font-size: 14px;
+  font-weight: 800; color: #8b5cf6;
+}
+.opt-impact {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;
+}
+.opt-impact-box {
+  padding: 12px 16px; border-radius: 8px;
+  border: 1px solid var(--border); background: #fafbfd;
+}
+.opt-impact-box h4 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px;
+  color: var(--text-muted); margin-bottom: 6px;
+}
+.opt-impact-box .impact-num {
+  font-family: 'SF Mono', Menlo, monospace; font-size: 16px; font-weight: 800;
+}
+.opt-impact-box .impact-num.reduced { color: var(--surplus); }
+.opt-impact-box .impact-raw {
+  font-size: 11px; color: var(--text-muted); text-decoration: line-through; margin-left: 8px;
 }
 </style>
 </head>
@@ -405,6 +444,15 @@ footer strong { color: var(--text); }
     <div class="card-body" id="layer7-body"></div>
   </div>
 
+  <!-- Optimizations -->
+  <div class="card opt-card open" id="card-optimizations">
+    <div class="card-header" onclick="toggleCard('card-optimizations')">
+      <h2><span class="step-badge">OPT</span> Inference &amp; Storage Optimizations</h2>
+      <svg class="chevron" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg>
+    </div>
+    <div class="card-body" id="optimizations-body"></div>
+  </div>
+
   <!-- Summary -->
   <div class="card summary-card open" id="card-summary">
     <div class="card-header" onclick="toggleCard('card-summary')">
@@ -437,9 +485,9 @@ footer strong { color: var(--text); }
 const DEFAULTS = {
   // ---- Layer 1: User / Instance Base ----
   consumer: {
-    mau_2026: 600e6,
-    mau: { bear: [800e6, 1.5e9], base: [1.2e9, 2.5e9], bull: [1.7e9, 3.5e9] },
-    dauPct: 0.30,
+    mau_2026: 1500e6,
+    mau: { bear: [2e9, 3e9], base: [2.5e9, 4.5e9], bull: [3.5e9, 6e9] },
+    dauPct: 0.45,
     queriesPerDAU: { 2026: 8, 2028: 12, 2031: 20 }
   },
   enterprise: {
@@ -450,9 +498,9 @@ const DEFAULTS = {
   },
   agentic: {
     instances_2026: 20e6,
-    instances: { bear: [100e6, 300e6], base: [200e6, 800e6], bull: [400e6, 1.5e9] },
+    instances: { bear: [200e6, 350e6], base: [500e6, 900e6], bull: [800e6, 1.5e9] },
     tasksPerDay_2026: 20,
-    tasksPerDay: { bear: [50, 100], base: [100, 300], bull: [150, 500] }
+    tasksPerDay: { bear: [80, 120], base: [200, 350], bull: [350, 500] }
   },
 
   // ---- Layer 2: Tokens ----
@@ -463,15 +511,15 @@ const DEFAULTS = {
   },
 
   // ---- Layer 3: KV Cache ----
-  kvBytesPerToken: { // MB
-    consumer: { 2026: 0.16, 2028: 0.10, 2031: 0.06 },
-    enterprise: { 2026: 0.20, 2028: 0.15, 2031: 0.08 },
-    agentic: { 2026: 0.12, 2028: 0.04, 2031: 0.03 }
+  kvBytesPerToken: { // MB — baseline GQA, flat (MLA/FP4 in Optimizations)
+    consumer: { 2026: 0.16, 2028: 0.16, 2031: 0.16 },
+    enterprise: { 2026: 0.20, 2028: 0.20, 2031: 0.20 },
+    agentic: { 2026: 0.12, 2028: 0.12, 2031: 0.12 }
   },
   contextLength: {
-    consumer: { 2026: 2000, 2028: 8000, 2031: 32000 },
-    enterprise: { 2026: 8000, 2028: 32000, 2031: 128000 },
-    agentic: { 2026: 32000, 2028: 128000, 2031: 512000 }
+    consumer: { 2026: 8000, 2028: 24000, 2031: 32000 },
+    enterprise: { 2026: 64000, 2028: 200000, 2031: 256000 },
+    agentic: { 2026: 200000, 2028: 750000, 2031: 1000000 }
   },
   concurrencyParams: {
     consumer: {
@@ -502,12 +550,22 @@ const DEFAULTS = {
     agentic: 0.80
   },
 
+  // KV Retention — accumulation over time
+  kvRetention: {
+    // How many days of persistent KV is kept on NAND before eviction
+    persistRetentionDays: { consumer: 1, enterprise: 7, agentic: 3 },
+    // Fraction of completed sessions whose KV is kept warm in DRAM
+    warmPct: { consumer: 0.15, enterprise: 0.40, agentic: 0.60 },
+    // How many hours warm KV is retained in DRAM before eviction
+    warmRetentionHours: { consumer: 4, enterprise: 8, agentic: 2 }
+  },
+
   // ---- Layer 5: RAG ----
   rag: {
     consumer: {
       users_2026: 50e6,
       users: { bear: [200e6, 500e6], base: [300e6, 1e9], bull: [500e6, 2e9] },
-      storagePerUser: { 2026: 50, 2028: 200, 2031: 1000 } // MB
+      storagePerUser: { 2026: 20, 2028: 50, 2031: 200 } // MB
     },
     enterprise: {
       orgs_2026: 200e3,
@@ -515,20 +573,20 @@ const DEFAULTS = {
       storagePerOrg: { 2026: 2e6, 2028: 10e6, 2031: 50e6 } // MB = TB*1e6/1e6
     },
     agentic: {
-      instances_2026: 5e6,
-      instances: { bear: [40e6, 150e6], base: [80e6, 400e6], bull: [200e6, 800e6] },
-      storagePerAgent: { 2026: 100, 2028: 500, 2031: 2000 } // MB
+      instances_2026: 15e6,
+      instances: { bear: [160e6, 250e6], base: [300e6, 650e6], bull: [700e6, 1.2e9] },
+      storagePerAgent: { 2026: 100, 2028: 1000, 2031: 2000 } // MB
     },
     dramHotPct: { 2026: 0.15, 2028: 0.12, 2031: 0.10 }
   },
 
   // ---- Layer 6: Non-KV/RAG ---- [bear, base, bull] for [2028, 2031]
   nonKVRAG: {
-    modelWeights:    { 2026: 5, bear: [8, 20], base: [15, 50], bull: [30, 120] },
-    trainingData:    { 2026: 10, bear: [15, 35], base: [30, 90], bull: [60, 250] },
-    aiGenContent:    { 2026: 5, bear: [10, 30], base: [20, 100], bull: [40, 400] },
-    logsTelemetry:   { 2026: 3, bear: [6, 15], base: [10, 35], bull: [20, 100] },
-    finetuneData:    { 2026: 1, bear: [2, 6], base: [5, 20], bull: [10, 60] }
+    modelWeights:    { 2026: 5, bear: [10, 18], base: [20, 40], bull: [40, 90] },
+    trainingData:    { 2026: 10, bear: [20, 30], base: [40, 70], bull: [75, 180] },
+    aiGenContent:    { 2026: 3, bear: [8, 14], base: [18, 40], bull: [35, 120] },
+    logsTelemetry:   { 2026: 3, bear: [8, 14], base: [15, 30], bull: [28, 70] },
+    finetuneData:    { 2026: 1, bear: [3, 5], base: [8, 16], bull: [15, 40] }
   },
 
   // ---- Layer 7: Replication ----
@@ -536,16 +594,21 @@ const DEFAULTS = {
 
   // ---- Layer 9: Supply ----
   nandSupply: {
-    total:    { 2026: 1200, bear: [1550, 2350], base: [1650, 2500], bull: [1400, 2100] },
+    total:    { 2026: 1200, bear: [1692, 2350], base: [1692, 2500], bull: [1692, 2100] },
     smartphonePct:  { 2026: 0.40, 2028: 0.38, 2031: 0.33 },
     consumerPCPct:  { 2026: 0.20, 2028: 0.18, 2031: 0.15 },
     otherPct:       { 2026: 0.10, 2028: 0.09, 2031: 0.08 },
     nonAIEntPct:    { 2026: 0.07, 2028: 0.06, 2031: 0.05 }
   },
   dramSupply: {
-    total:      { 2026: 155, bear: [200, 290], base: [200, 290], bull: [200, 290] },
-    serverPct:  { 2026: 0.38, 2028: 0.42, 2031: 0.50 },
-    aiSharePct: { 2026: 0.25, 2028: 0.35, 2031: 0.50 }
+    total:      { 2026: 155, bear: [58.9, 90], base: [58.9, 90], bull: [58.9, 90] },
+    smartphonePct:  { 2026: 0.30, 2028: 0.28, 2031: 0.22 },
+    pcPct:          { 2026: 0.22, 2028: 0.18, 2031: 0.14 },
+    consumerElecPct:{ 2026: 0.04, 2028: 0.03, 2031: 0.02 },
+    automotivePct:  { 2026: 0.02, 2028: 0.03, 2031: 0.04 },
+    otherPct:       { 2026: 0.04, 2028: 0.06, 2031: 0.08 },
+    serverPct:      { 2026: 0.38, 2028: 0.42, 2031: 0.50 },
+    aiSharePct:     { 2026: 0.25, 2028: 0.35, 2031: 0.50 }
   },
 
   // ---- Compute Parameters (formerly hardcoded in compute()) ----
@@ -559,6 +622,18 @@ const DEFAULTS = {
 
 let D = JSON.parse(JSON.stringify(DEFAULTS));
 let customScenarioSource = 'base';
+
+// ---- Optimizations: toggleable efficiency gains ----
+const OPTIMIZATIONS = [
+  { id: 'kvFP8',        label: 'FP8 KV Cache Quantization',    factor: 2.0, category: 'kv',      desc: 'FP16\u2192FP8: production standard on H100/H200' },
+  { id: 'kvFP4',        label: 'FP4 KV Cache Quantization',    factor: 4.0, category: 'kv',      desc: 'FP16\u2192FP4: emerging on Blackwell B200 GPUs' },
+  { id: 'mla',          label: 'Multi-Latent Attention (MLA)',  factor: 5.0, category: 'kv',      desc: '93% KV compression (DeepSeek architecture)' },
+  { id: 'prefixCache',  label: 'Prefix / Prompt Caching',      factor: 1.5, category: 'kv',      desc: 'Deduplicate shared system prompt KV across requests' },
+  { id: 'slidingWindow',label: 'Sliding Window Attention',     factor: 2.0, category: 'kv',      desc: 'Limit attention to recent token window (Mistral-style)' },
+  { id: 'pagedAttn',    label: 'PagedAttention / vLLM',        factor: 3.0, category: 'kv',      desc: 'Virtual memory for KV cache, <4% fragmentation waste' },
+  { id: 'erasureCoding',label: 'Erasure Coding',               factor: 2.0, category: 'storage', desc: 'Replace 3x replication with erasure codes (~1.5x overhead)' },
+];
+let optEnabled = { bear: {}, base: {}, bull: {}, custom: {} };
 
 function resetD() {
   D = JSON.parse(JSON.stringify(DEFAULTS));
@@ -588,6 +663,8 @@ function initCustom(fromSc) {
   // Supply
   D.nandSupply.total.custom = D.nandSupply.total[fromSc].slice();
   D.dramSupply.total.custom = D.dramSupply.total[fromSc].slice();
+  // Copy optimization enabled state from source scenario
+  optEnabled.custom = JSON.parse(JSON.stringify(optEnabled[fromSc]));
   customScenarioSource = fromSc;
   scenario = 'custom';
 }
@@ -613,6 +690,38 @@ function fmtEB(n) {
   if (Math.abs(n) >= 1000) return (n/1000).toFixed(1) + ' ZB';
   if (Math.abs(n) < 0.01) return (n*1024).toFixed(1) + ' PB';
   return n.toFixed(Math.abs(n) >= 100 ? 0 : Math.abs(n) >= 10 ? 1 : 2) + ' EB';
+}
+function fmtEBn(n) {
+  if (n === undefined || n === null || isNaN(n)) return '—';
+  if (Math.abs(n) >= 1000) return (n/1000).toFixed(1);
+  if (Math.abs(n) < 0.01) return (n*1024).toFixed(1);
+  return n.toFixed(Math.abs(n) >= 100 ? 0 : Math.abs(n) >= 10 ? 1 : 2);
+}
+// Format a group of EB values in consistent units based on the largest value
+// Pass { forceEB: true } as last arg to always use EB
+function fmtEBGroup(...args) {
+  let opts = {};
+  let vals = args;
+  if (args.length && typeof args[args.length-1] === 'object' && args[args.length-1] !== null && !Array.isArray(args[args.length-1]) && 'forceEB' in args[args.length-1]) {
+    opts = args[args.length-1]; vals = args.slice(0, -1);
+  }
+  const valid = vals.filter(v => v !== undefined && v !== null && !isNaN(v));
+  if (!valid.length) return vals.map(() => '—');
+  let unit, divisor;
+  if (opts.forceEB) { unit = ' EB'; divisor = 1; }
+  else {
+    const maxAbs = Math.max(...valid.map(v => Math.abs(v)));
+    if (maxAbs >= 1000) { unit = ' ZB'; divisor = 1000; }
+    else if (maxAbs >= 0.01) { unit = ' EB'; divisor = 1; }
+    else { unit = ' PB'; divisor = 1/1024; }
+  }
+  return vals.map(v => {
+    if (v === undefined || v === null || isNaN(v)) return '—';
+    const scaled = v / divisor;
+    const abs = Math.abs(scaled);
+    const d = abs >= 1000 ? 0 : abs >= 100 ? 0 : abs >= 10 ? 1 : abs >= 1 ? 2 : 3;
+    return scaled.toFixed(d) + unit;
+  });
 }
 function fmtPct(n) { return (n >= 0 ? '+' : '') + n.toFixed(1) + '%'; }
 function fmtTokens(n) {
@@ -668,6 +777,70 @@ function editableRaw(value, dataPath) {
   if (scenario !== 'custom') return value;
   return '<input type="text" class="edit-input" value="' + value + '"'
     + ' data-path="' + dataPath + '" oninput="updateCustomValue(this)">';
+}
+
+function toggleOpt(optId, checked) {
+  optEnabled[scenario][optId] = checked;
+  render();
+}
+
+function updateOptFactor(el) {
+  const optId = el.dataset.optId;
+  const raw = el.value.replace(/[xX×]$/, '').trim();
+  const val = parseFloat(raw);
+  if (isNaN(val) || val <= 0) return;
+  const opt = OPTIMIZATIONS.find(o => o.id === optId);
+  if (opt) opt.factor = val;
+  const activePath = el.dataset.optId;
+  const cursorPos = el.selectionStart;
+  const R = compute(scenario);
+  renderWithResults(R);
+  const newEl = document.querySelector('[data-opt-id="' + activePath + '"]');
+  if (newEl) {
+    newEl.value = el.value;
+    newEl.focus();
+    newEl.setSelectionRange(cursorPos, cursorPos);
+  }
+}
+
+function getOptFactors(sc) {
+  let kvFactor = 1, storageFactor = 1;
+  OPTIMIZATIONS.forEach(opt => {
+    if (optEnabled[sc] && optEnabled[sc][opt.id]) {
+      if (opt.category === 'kv') kvFactor *= opt.factor;
+      else if (opt.category === 'storage') storageFactor *= opt.factor;
+    }
+  });
+  return { kvFactor, storageFactor };
+}
+
+function applyOptimizations(R, sc) {
+  const { kvFactor, storageFactor } = getOptFactors(sc);
+  R.optKvFactor = kvFactor;
+  R.optStorageFactor = storageFactor;
+  R.hasOpt = kvFactor > 1 || storageFactor > 1;
+  if (!R.hasOpt) return;
+  for (const yr of [2028, 2031]) {
+    // Save raw (pre-optimization) values for display
+    R['ai_nand_raw_' + yr] = R['ai_nand_' + yr];
+    R['ai_dram_raw_' + yr] = R['ai_dram_' + yr];
+    // KV-related DRAM components: transient KV tier + warm KV
+    const kvDramRaw = R[`kv_dram_${yr}`] + R[`kv_warm_dram_${yr}`];
+    const kvDramOpt = kvDramRaw / kvFactor;
+    const ragDram = R[`rag_total_dram_${yr}`];
+    R['ai_dram_' + yr] = (kvDramOpt + ragDram) * D.computeParams.dramOverhead;
+    // NAND: KV tiers reduced by kvFactor, persistent storage by storageFactor
+    const kvNandTier = R[`kv_nand_${yr}`] / kvFactor;
+    const persistKV = R[`kv_persist_nand_${yr}`] / kvFactor;
+    const ragNand = R[`rag_total_nand_${yr}`] / storageFactor;
+    const nkTotal = R[`nk_total_${yr}`] / storageFactor;
+    R['ai_nand_' + yr] = ((persistKV + ragNand + nkTotal) * R.replMult) + kvNandTier;
+    // Recompute surplus/deficit
+    R[`nand_surplus_${yr}`] = R[`nand_avail_ai_${yr}`] - R[`ai_nand_${yr}`];
+    R[`nand_surplus_pct_${yr}`] = (R[`nand_surplus_${yr}`] / R[`nand_supply_${yr}`]) * 100;
+    R[`dram_surplus_${yr}`] = R[`dram_ai_avail_${yr}`] - R[`ai_dram_${yr}`];
+    R[`dram_surplus_pct_${yr}`] = (R[`dram_surplus_${yr}`] / R[`dram_supply_${yr}`]) * 100;
+  }
 }
 
 function updateCustomValue(el) {
@@ -778,16 +951,33 @@ function compute(sc) {
     R[`kv_nand_${yr}`] = toEB(R[`kv_total_${yr}`]) * split[2];
   }
 
-  // Persistent KV → NAND (rough: take total concurrent KV as proxy for active pool,
-  // multiply by persist% and a session-turnover factor ~10x for daily unique sessions)
+  // Persistent KV → NAND: stock = concurrent_KV × persistPct × sessionTurnover × retentionDays
   for (const yr of [2028,2031]) {
     let persistNand = 0;
     for (const seg of ['consumer','enterprise','agentic']) {
       const s = seg.charAt(0);
       const kvBytes = R[`kv_${s}_${yr}`];
-      persistNand += toEB(kvBytes) * D.persistKVPct[seg] * D.computeParams.sessionTurnover;
+      const dailyFlow = toEB(kvBytes) * D.persistKVPct[seg] * D.computeParams.sessionTurnover;
+      const retDays = D.kvRetention.persistRetentionDays[seg];
+      R[`kv_persist_${s}_nand_${yr}`] = dailyFlow * retDays;
+      persistNand += dailyFlow * retDays;
     }
     R[`kv_persist_nand_${yr}`] = persistNand;
+  }
+
+  // Retained/warm KV in DRAM — completed sessions kept warm for fast reuse
+  for (const yr of [2028,2031]) {
+    let warmDram = 0;
+    for (const seg of ['consumer','enterprise','agentic']) {
+      const s = seg.charAt(0);
+      const kvBytes = R[`kv_${s}_${yr}`];
+      const warmKV = toEB(kvBytes) * D.computeParams.sessionTurnover
+                     * D.kvRetention.warmPct[seg]
+                     * (D.kvRetention.warmRetentionHours[seg] / 24);
+      R[`kv_warm_${s}_dram_${yr}`] = warmKV;
+      warmDram += warmKV;
+    }
+    R[`kv_warm_dram_${yr}`] = warmDram;
   }
 
   // Layer 5: RAG
@@ -806,6 +996,19 @@ function compute(sc) {
   R.rag_a_nand_2026 = rg.agentic.instances_2026 * rg.agentic.storagePerAgent[2026] * 1e6 / 1e18;
   R.rag_total_nand_2026 = R.rag_c_nand_2026 + R.rag_e_nand_2026 + R.rag_a_nand_2026;
   R.rag_total_dram_2026 = R.rag_total_nand_2026 * rg.dramHotPct[2026];
+
+  // 2026 baseline warm KV
+  let warmDram26 = 0;
+  for (const seg of ['consumer','enterprise','agentic']) {
+    const s = seg.charAt(0);
+    const kvBytes = R[`kv_${s}_2026`];
+    const warmKV = toEB(kvBytes) * D.computeParams.sessionTurnover
+                   * D.kvRetention.warmPct[seg]
+                   * (D.kvRetention.warmRetentionHours[seg] / 24);
+    R[`kv_warm_${s}_dram_2026`] = warmKV;
+    warmDram26 += warmKV;
+  }
+  R.kv_warm_dram_2026 = warmDram26;
 
   // Layer 6: Non-KV/RAG
   const nk = D.nonKVRAG;
@@ -831,13 +1034,13 @@ function compute(sc) {
     // Transient KV NAND (not replicated, but still counts as demand)
     R[`ai_nand_${yr}`] = (persistentNand * R.replMult) + R[`kv_nand_${yr}`];
     // DRAM: transient KV in DRAM + RAG hot tier + server overhead (~20% on top)
-    const dramRaw = R[`kv_dram_${yr}`] + R[`rag_total_dram_${yr}`];
+    const dramRaw = R[`kv_dram_${yr}`] + R[`kv_warm_dram_${yr}`] + R[`rag_total_dram_${yr}`];
     R[`ai_dram_${yr}`] = dramRaw * D.computeParams.dramOverhead;
   }
   // 2026 baseline
   const pn26 = (R.kv_persist_nand_2028 || 0) * D.computeParams.baseline2026PersistWeight + R.rag_total_nand_2026 + R.nk_total_2026;
   R.ai_nand_2026 = pn26 * D.computeParams.baseline2026ReplMult + R.kv_nand_2026;
-  R.ai_dram_2026 = (R.kv_dram_2026 + R.rag_total_dram_2026) * D.computeParams.dramOverhead;
+  R.ai_dram_2026 = (R.kv_dram_2026 + R.kv_warm_dram_2026 + R.rag_total_dram_2026) * D.computeParams.dramOverhead;
 
   // Layer 9: Supply
   const ns = D.nandSupply;
@@ -854,14 +1057,22 @@ function compute(sc) {
     R[`nand_surplus_pct_${yr}`] = (R[`nand_surplus_${yr}`] / R[`nand_supply_${yr}`]) * 100;
   }
 
-  // DRAM supply
+  // DRAM supply — full waterfall
   const ds = D.dramSupply;
   for (const yr of [2028,2031]) {
     const idx = yr === 2028 ? 0 : 1;
     R[`dram_supply_${yr}`] = ds.total[sc][idx];
+    R[`dram_smartphone_${yr}`] = R[`dram_supply_${yr}`] * ds.smartphonePct[yr];
+    R[`dram_pc_${yr}`] = R[`dram_supply_${yr}`] * ds.pcPct[yr];
+    R[`dram_consumerElec_${yr}`] = R[`dram_supply_${yr}`] * ds.consumerElecPct[yr];
+    R[`dram_automotive_${yr}`] = R[`dram_supply_${yr}`] * ds.automotivePct[yr];
+    R[`dram_other_${yr}`] = R[`dram_supply_${yr}`] * ds.otherPct[yr];
     R[`dram_server_${yr}`] = R[`dram_supply_${yr}`] * ds.serverPct[yr];
+    R[`dram_nonAI_server_${yr}`] = R[`dram_server_${yr}`] * (1 - ds.aiSharePct[yr]);
     R[`dram_ai_avail_${yr}`] = R[`dram_server_${yr}`] * ds.aiSharePct[yr];
+    R[`dram_nonAI_total_${yr}`] = R[`dram_smartphone_${yr}`] + R[`dram_pc_${yr}`] + R[`dram_consumerElec_${yr}`] + R[`dram_automotive_${yr}`] + R[`dram_other_${yr}`] + R[`dram_nonAI_server_${yr}`];
     R[`dram_surplus_${yr}`] = R[`dram_ai_avail_${yr}`] - R[`ai_dram_${yr}`];
+    R[`dram_surplus_pct_${yr}`] = (R[`dram_surplus_${yr}`] / R[`dram_supply_${yr}`]) * 100;
   }
 
   return R;
@@ -912,6 +1123,7 @@ function render() {
 }
 
 function renderWithResults(R) {
+  applyOptimizations(R, scenario);
   const sc = scenario;
   const scLabel = { bear: 'Bear', base: 'Base', bull: 'Bull', custom: 'Custom' }[sc];
 
@@ -922,7 +1134,7 @@ function renderWithResults(R) {
     ['Agentic AI scale', { bear:'Slow rollout, narrow use', base:'Broad rollout, multi-domain', bull:'Ubiquitous, always-on agents' }],
     ['Peak concurrency model', { bear:'Derived from DAU × session params', base:'Derived from DAU × session params', bull:'Derived from DAU × session params' }],
     ['Avg context length growth', { bear:'2x every 3 years', base:'4x every 3 years', bull:'8x every 3 years' }],
-    ['KV cache efficiency gains', { bear:'Aggressive (MLA, FP4, 90%)', base:'Moderate (FP4, 60%)', bull:'Minimal improvement' }],
+    ['KV cache efficiency gains', { bear:'Gradual GQA tuning', base:'Gradual GQA tuning', bull:'Gradual GQA tuning' }],
     ['RAG adoption depth', { bear:'Shallow (few docs)', base:'Moderate (deep KBs)', bull:'Deep (full org memory)' }],
     ['Replication factor', { bear:'2.5x', base:'3.0x', bull:'3.5x' }],
     ['NAND supply bit growth', { bear:'18% CAGR', base:'15% CAGR', bull:'12% CAGR (constrained)' }],
@@ -940,7 +1152,7 @@ function renderWithResults(R) {
   dtHTML += '</tbody>';
   document.getElementById('drivers-table').innerHTML = dtHTML;
   const scenarioNotes = {
-    bear: '<strong>Bear case:</strong> AI adoption follows a measured trajectory. Enterprise rollouts are cautious, agentic AI remains narrow. Efficiency gains in KV cache (MLA, FP4, heavy compression) reduce memory per inference. NAND supply grows at a healthy 18% CAGR — no shortage.',
+    bear: '<strong>Bear case:</strong> AI adoption follows a measured trajectory. Enterprise rollouts are cautious, agentic AI remains narrow. KV cache uses baseline GQA architecture; MLA/FP4 gains shown separately in Optimizations. NAND supply grows at a healthy 18% CAGR — no shortage.',
     base: '<strong>Base case:</strong> AI adoption hits an S-curve inflection in 2027. Enterprise and agentic use cases broaden significantly. Moderate efficiency gains offset some demand growth. NAND supply grows at ~15% CAGR, roughly tracking historical averages.',
     bull: '<strong>Bull case:</strong> AI becomes ubiquitous infrastructure. Agents run continuously across every industry. Context windows explode, RAG becomes deep organizational memory. Meanwhile, NAND supply is constrained (12% CAGR) as wafer allocation shifts to HBM. This creates structural shortage.',
     custom: '<strong>Custom scenario:</strong> Edit any numeric value in the tables below. Initialized from ' + customScenarioSource.charAt(0).toUpperCase() + customScenarioSource.slice(1) + ' defaults. Use the "Reset to..." dropdown to start fresh from another scenario.'
@@ -993,9 +1205,9 @@ function renderWithResults(R) {
 
   // Layer 3: KV Cache
   let l3 = '<h3 style="font-size:13px;margin-bottom:8px;color:var(--navy)">KV Cache Bytes Per Token (Industry-Weighted Avg)</h3>';
-  l3 += '<table><thead><tr><th>Segment</th><th class="num">2026 (MB/tok)</th><th class="num">2028 (MB/tok)</th><th class="num">2031 (MB/tok)</th><th>Trend</th></tr></thead><tbody>';
+  l3 += '<table><thead><tr><th>Segment</th><th class="num">2026 (MB/tok)</th><th class="num">2028 (MB/tok)</th><th class="num">2031 (MB/tok)</th></tr></thead><tbody>';
   for (const [seg, label, cls] of [['consumer','Consumer','seg-consumer'],['enterprise','Enterprise','seg-enterprise'],['agentic','Agentic','seg-agentic']]) {
-    l3 += `<tr><td><span class="segment-label ${cls}">${label}</span></td><td class="num">${editableRaw(D.kvBytesPerToken[seg][2026], 'kvBytesPerToken.'+seg+'.2026')}</td><td class="num">${editableRaw(D.kvBytesPerToken[seg][2028], 'kvBytesPerToken.'+seg+'.2028')}</td><td class="num">${editableRaw(D.kvBytesPerToken[seg][2031], 'kvBytesPerToken.'+seg+'.2031')}</td><td style="color:var(--bear);font-size:11px">↓ GQA→MLA, FP8→FP4</td></tr>`;
+    l3 += `<tr><td><span class="segment-label ${cls}">${label}</span></td><td class="num">${editableRaw(D.kvBytesPerToken[seg][2026], 'kvBytesPerToken.'+seg+'.2026')}</td><td class="num">${editableRaw(D.kvBytesPerToken[seg][2028], 'kvBytesPerToken.'+seg+'.2028')}</td><td class="num">${editableRaw(D.kvBytesPerToken[seg][2031], 'kvBytesPerToken.'+seg+'.2031')}</td></tr>`;
   }
   l3 += '</tbody></table>';
 
@@ -1011,9 +1223,11 @@ function renderWithResults(R) {
   l3 += '<h3 style="font-size:13px;margin:16px 0 8px;color:var(--navy)">Total Transient KV Cache</h3>';
   l3 += '<table><thead><tr><th>Segment</th><th class="num">2026</th><th class="num">2028</th><th class="num">2031</th></tr></thead><tbody>';
   for (const [s, label, cls] of [['c','Consumer','seg-consumer'],['e','Enterprise','seg-enterprise'],['a','Agentic','seg-agentic']]) {
-    l3 += `<tr><td><span class="segment-label ${cls}">${label}</span></td><td class="num">${fmtEB(R[`kv_${s}_2026`]/1e18)}</td><td class="num">${fmtEB(R[`kv_${s}_2028`]/1e18)}</td><td class="num">${fmtEB(R[`kv_${s}_2031`]/1e18)}</td></tr>`;
+    const g = fmtEBGroup(R[`kv_${s}_2026`]/1e18, R[`kv_${s}_2028`]/1e18, R[`kv_${s}_2031`]/1e18);
+    l3 += `<tr><td><span class="segment-label ${cls}">${label}</span></td><td class="num">${g[0]}</td><td class="num">${g[1]}</td><td class="num">${g[2]}</td></tr>`;
   }
-  l3 += `<tr class="total-row"><td></td><td class="num">${fmtEB(R.kv_total_2026/1e18)}</td><td class="num">${fmtEB(R.kv_total_2028/1e18)}</td><td class="num">${fmtEB(R.kv_total_2031/1e18)}</td></tr>`;
+  { const g = fmtEBGroup(R.kv_total_2026/1e18, R.kv_total_2028/1e18, R.kv_total_2031/1e18);
+    l3 += `<tr class="total-row"><td></td><td class="num">${g[0]}</td><td class="num">${g[1]}</td><td class="num">${g[2]}</td></tr>`; }
   l3 += '</tbody></table>';
   l3 += '<p class="note"><strong>Formula:</strong> KV_bytes_per_token = 2 × layers × KV_heads × head_dim × precision_bytes. Total KV = concurrent_sessions × context_tokens × bytes/token. Per-token KV decreases (GQA→MLA, FP8→FP4) but context lengths grow faster → total KV per session still grows.</p>';
   document.getElementById('layer3-body').innerHTML = l3;
@@ -1023,25 +1237,44 @@ function renderWithResults(R) {
   l4 += '<table><thead><tr><th>Tier</th><th class="num">2026</th><th class="num">% </th><th class="num">2028</th><th class="num">%</th><th class="num">2031</th><th class="num">%</th></tr></thead><tbody>';
   for (const [tier, idx] of [['HBM (on-GPU)', 0],['DRAM (host)', 1],['NAND (SSD)', 2]]) {
     l4 += `<tr><td>${tier}</td>`;
-    for (const yr of [2026,2028,2031]) {
+    const tierVals = [2026,2028,2031].map(yr => (R[`kv_total_${yr}`]/1e18) * D.memTierSplit[yr][idx]);
+    const tierFmt = fmtEBGroup(...tierVals);
+    [2026,2028,2031].forEach((yr, i) => {
       const pct = D.memTierSplit[yr][idx];
-      const val = (R[`kv_total_${yr}`]/1e18) * pct;
-      l4 += `<td class="num">${fmtEB(val)}</td><td class="num" style="color:var(--text-muted)">${scenario === 'custom' ? editableRaw(pct, 'memTierSplit.'+yr+'.'+idx) : (pct*100).toFixed(0) + '%'}</td>`;
-    }
+      l4 += `<td class="num">${tierFmt[i]}</td><td class="num" style="color:var(--text-muted)">${scenario === 'custom' ? editableRaw(pct, 'memTierSplit.'+yr+'.'+idx) : (pct*100).toFixed(0) + '%'}</td>`;
+    });
     l4 += '</tr>';
   }
   l4 += '</tbody></table>';
 
-  l4 += '<h3 style="font-size:13px;margin:16px 0 8px;color:var(--navy)">Persistent KV Cache → NAND</h3>';
-  l4 += '<table><thead><tr><th>Metric</th><th class="num">2028</th><th class="num">2031</th></tr></thead><tbody>';
+  l4 += '<h3 style="font-size:13px;margin:16px 0 8px;color:var(--navy)">Persistent KV Cache Stock → NAND</h3>';
+  l4 += '<table><thead><tr><th>Segment</th><th class="num">Persist %</th><th class="num">Retention Days</th><th class="num">Stock 2028</th><th class="num">Stock 2031</th></tr></thead><tbody>';
   const pkvC = D.persistKVPct.consumer, pkvE = D.persistKVPct.enterprise, pkvA = D.persistKVPct.agentic;
-  const pkvSum = pkvC + pkvE + pkvA;
-  l4 += `<tr><td>Consumer (${scenario==='custom' ? editableRaw(pkvC, 'persistKVPct.consumer') : (pkvC*100).toFixed(0)+'%'} sessions persist)</td><td class="num">${fmtEB(R.kv_persist_nand_2028 * pkvC/pkvSum)}</td><td class="num">${fmtEB(R.kv_persist_nand_2031 * pkvC/pkvSum)}</td></tr>`;
-  l4 += `<tr><td>Enterprise (${scenario==='custom' ? editableRaw(pkvE, 'persistKVPct.enterprise') : (pkvE*100).toFixed(0)+'%'} sessions persist)</td><td class="num">${fmtEB(R.kv_persist_nand_2028 * pkvE/pkvSum)}</td><td class="num">${fmtEB(R.kv_persist_nand_2031 * pkvE/pkvSum)}</td></tr>`;
-  l4 += `<tr><td>Agentic (${scenario==='custom' ? editableRaw(pkvA, 'persistKVPct.agentic') : (pkvA*100).toFixed(0)+'%'} tasks reuse cached KV)</td><td class="num">${fmtEB(R.kv_persist_nand_2028 * pkvA/pkvSum)}</td><td class="num">${fmtEB(R.kv_persist_nand_2031 * pkvA/pkvSum)}</td></tr>`;
-  l4 += `<tr class="total-row"><td>Total persistent KV → NAND</td><td class="num">${fmtEB(R.kv_persist_nand_2028)}</td><td class="num">${fmtEB(R.kv_persist_nand_2031)}</td></tr>`;
+  const retC = D.kvRetention.persistRetentionDays.consumer, retE = D.kvRetention.persistRetentionDays.enterprise, retA = D.kvRetention.persistRetentionDays.agentic;
+  { const pAll = fmtEBGroup(R.kv_persist_c_nand_2028, R.kv_persist_c_nand_2031, R.kv_persist_e_nand_2028, R.kv_persist_e_nand_2031, R.kv_persist_a_nand_2028, R.kv_persist_a_nand_2031, R.kv_persist_nand_2028, R.kv_persist_nand_2031);
+  l4 += `<tr><td><span class="segment-label seg-consumer">Consumer</span></td><td class="num">${scenario==='custom' ? editableRaw(pkvC, 'persistKVPct.consumer') : (pkvC*100).toFixed(0)+'%'}</td><td class="num">${scenario==='custom' ? editableRaw(retC, 'kvRetention.persistRetentionDays.consumer') : retC+'d'}</td><td class="num">${pAll[0]}</td><td class="num">${pAll[1]}</td></tr>`;
+  l4 += `<tr><td><span class="segment-label seg-enterprise">Enterprise</span></td><td class="num">${scenario==='custom' ? editableRaw(pkvE, 'persistKVPct.enterprise') : (pkvE*100).toFixed(0)+'%'}</td><td class="num">${scenario==='custom' ? editableRaw(retE, 'kvRetention.persistRetentionDays.enterprise') : retE+'d'}</td><td class="num">${pAll[2]}</td><td class="num">${pAll[3]}</td></tr>`;
+  l4 += `<tr><td><span class="segment-label seg-agentic">Agentic</span></td><td class="num">${scenario==='custom' ? editableRaw(pkvA, 'persistKVPct.agentic') : (pkvA*100).toFixed(0)+'%'}</td><td class="num">${scenario==='custom' ? editableRaw(retA, 'kvRetention.persistRetentionDays.agentic') : retA+'d'}</td><td class="num">${pAll[4]}</td><td class="num">${pAll[5]}</td></tr>`;
+  l4 += `<tr class="total-row"><td>Total persistent KV → NAND</td><td></td><td></td><td class="num">${pAll[6]}</td><td class="num">${pAll[7]}</td></tr>`; }
   l4 += '</tbody></table>';
-  l4 += '<p class="note"><strong>Rationale:</strong> As context grows faster than HBM capacity, KV cache spills to DRAM and NAND. LMCache-style offloading and multi-turn persistent contexts stored on SSD grow significantly by 2031.</p>';
+  l4 += '<p class="note"><strong>Formula:</strong> Persistent KV Stock (NAND) = Transient KV Snapshot × Session Turnover (10×) × Persist % × Retention Days</p>';
+
+  l4 += '<h3 style="font-size:13px;margin:16px 0 8px;color:var(--navy)">Retained / Warm KV in DRAM</h3>';
+  l4 += '<table><thead><tr><th>Segment</th><th class="num">Warm %</th><th class="num">Warm Hours</th><th class="num">Warm KV 2028</th><th class="num">Warm KV 2031</th></tr></thead><tbody>';
+  const wPctC = D.kvRetention.warmPct.consumer, wPctE = D.kvRetention.warmPct.enterprise, wPctA = D.kvRetention.warmPct.agentic;
+  const wHrC = D.kvRetention.warmRetentionHours.consumer, wHrE = D.kvRetention.warmRetentionHours.enterprise, wHrA = D.kvRetention.warmRetentionHours.agentic;
+  { const wAll = fmtEBGroup(R.kv_warm_c_dram_2028, R.kv_warm_c_dram_2031, R.kv_warm_e_dram_2028, R.kv_warm_e_dram_2031, R.kv_warm_a_dram_2028, R.kv_warm_a_dram_2031, R.kv_warm_dram_2028, R.kv_warm_dram_2031);
+  l4 += `<tr><td><span class="segment-label seg-consumer">Consumer</span></td><td class="num">${scenario==='custom' ? editableRaw(wPctC, 'kvRetention.warmPct.consumer') : (wPctC*100).toFixed(0)+'%'}</td><td class="num">${scenario==='custom' ? editableRaw(wHrC, 'kvRetention.warmRetentionHours.consumer') : wHrC+'h'}</td><td class="num">${wAll[0]}</td><td class="num">${wAll[1]}</td></tr>`;
+  l4 += `<tr><td><span class="segment-label seg-enterprise">Enterprise</span></td><td class="num">${scenario==='custom' ? editableRaw(wPctE, 'kvRetention.warmPct.enterprise') : (wPctE*100).toFixed(0)+'%'}</td><td class="num">${scenario==='custom' ? editableRaw(wHrE, 'kvRetention.warmRetentionHours.enterprise') : wHrE+'h'}</td><td class="num">${wAll[2]}</td><td class="num">${wAll[3]}</td></tr>`;
+  l4 += `<tr><td><span class="segment-label seg-agentic">Agentic</span></td><td class="num">${scenario==='custom' ? editableRaw(wPctA, 'kvRetention.warmPct.agentic') : (wPctA*100).toFixed(0)+'%'}</td><td class="num">${scenario==='custom' ? editableRaw(wHrA, 'kvRetention.warmRetentionHours.agentic') : wHrA+'h'}</td><td class="num">${wAll[4]}</td><td class="num">${wAll[5]}</td></tr>`;
+  l4 += `<tr class="total-row"><td>Total warm KV in DRAM</td><td></td><td></td><td class="num">${wAll[6]}</td><td class="num">${wAll[7]}</td></tr>`; }
+  l4 += '</tbody></table>';
+  l4 += `<p class="note"><strong>Formula:</strong> Retained Warm KV (DRAM) = Transient KV Snapshot × Session Turnover (10×) × Warm % × (Warm Hours / 24)<br>`;
+  { const dc28 = fmtEBGroup(R.kv_dram_2028, R.kv_warm_dram_2028, R.kv_dram_2028 + R.kv_warm_dram_2028);
+    l4 += `<strong>DRAM composition (2028):</strong> Transient ${dc28[0]} + Warm ${dc28[1]} = ${dc28[2]} KV in DRAM<br>`; }
+  { const dc31 = fmtEBGroup(R.kv_dram_2031, R.kv_warm_dram_2031, R.kv_dram_2031 + R.kv_warm_dram_2031);
+    l4 += `<strong>DRAM composition (2031):</strong> Transient ${dc31[0]} + Warm ${dc31[1]} = ${dc31[2]} KV in DRAM</p>`; }
+  l4 += '<p class="note"><strong>Rationale:</strong> As context grows faster than HBM capacity, KV cache spills to DRAM and NAND. Persistent KV accumulates over retention days on NAND. Warm KV (prompt/prefix caching) adds to transient DRAM demand for fast session reuse.</p>';
   document.getElementById('layer4-body').innerHTML = l4;
 
   // Layer 5: RAG
@@ -1098,20 +1331,104 @@ function renderWithResults(R) {
   }
   document.getElementById('layer7-body').innerHTML = l7;
 
-  // Summary
+  // Optimizations card
+  let optHtml = '<p class="note" style="margin-bottom:12px">Toggle optimizations to reduce demand. Enabled optimizations flow through to the totals and waterfall charts below. Factors are editable. Toggles are per-scenario.</p>';
+  optHtml += '<table><thead><tr><th style="width:30px">On</th><th>Optimization</th><th style="width:80px">Category</th><th class="num" style="width:70px">Factor</th><th>Description</th></tr></thead><tbody>';
+  OPTIMIZATIONS.forEach(opt => {
+    const checked = optEnabled[sc] && optEnabled[sc][opt.id] ? 'checked' : '';
+    const catLabel = opt.category === 'kv' ? 'KV Cache' : 'Storage';
+    const catColor = opt.category === 'kv' ? '#6d28d9' : '#0369a1';
+    optHtml += '<tr>';
+    optHtml += '<td><input type="checkbox" class="opt-check" ' + checked + ' onchange="toggleOpt(\'' + opt.id + '\', this.checked)"></td>';
+    optHtml += '<td style="font-weight:600">' + opt.label + '</td>';
+    optHtml += '<td><span style="font-size:10px;padding:2px 6px;border-radius:3px;background:' + (opt.category === 'kv' ? '#ede9fe' : '#e0f2fe') + ';color:' + catColor + ';font-weight:600">' + catLabel + '</span></td>';
+    optHtml += '<td class="num"><input type="text" class="opt-factor-input" value="' + opt.factor + 'x" data-opt-id="' + opt.id + '" oninput="updateOptFactor(this)"></td>';
+    optHtml += '<td style="font-size:12px;color:var(--text-muted)">' + opt.desc + '</td>';
+    optHtml += '</tr>';
+  });
+  optHtml += '</tbody></table>';
+
+  // Combined factors display
+  const { kvFactor, storageFactor } = getOptFactors(sc);
+  optHtml += '<div class="opt-combined">';
+  optHtml += '<div>Combined KV Reduction: <span class="factor-val">' + kvFactor.toFixed(1) + 'x</span></div>';
+  optHtml += '<div>Combined Storage Reduction: <span class="factor-val">' + storageFactor.toFixed(1) + 'x</span></div>';
+  if (R.hasOpt) {
+    optHtml += '<div style="margin-top:6px;font-size:12px;color:var(--text-muted)">Savings applied: DRAM 2028 ' + fmtEB(R.ai_dram_raw_2028) + ' \u2192 ' + fmtEB(R.ai_dram_2028) + ' | NAND 2028 ' + fmtEB(R.ai_nand_raw_2028) + ' \u2192 ' + fmtEB(R.ai_nand_2028) + '</div>';
+    optHtml += '<div style="font-size:12px;color:var(--text-muted)">Savings applied: DRAM 2031 ' + fmtEB(R.ai_dram_raw_2031) + ' \u2192 ' + fmtEB(R.ai_dram_2031) + ' | NAND 2031 ' + fmtEB(R.ai_nand_raw_2031) + ' \u2192 ' + fmtEB(R.ai_nand_2031) + '</div>';
+  }
+  optHtml += '</div>';
+
+  document.getElementById('optimizations-body').innerHTML = optHtml;
+
+  // Summary — shows optimized demand when optimizations are active
+  const ho = R.hasOpt;
+  const kf = R.optKvFactor || 1;
+  const sf = R.optStorageFactor || 1;
+  const _eb = { forceEB: true };
+  // Format a row of values in consistent units; vals = array of numbers (use null for —)
+  function smRow(vals) {
+    const nums = vals.filter(v => v !== null);
+    const g = fmtEBGroup(...nums, _eb);
+    let gi = 0;
+    return vals.map(v => v === null ? '\u2014' : g[gi++]);
+  }
+  function smOptRow(rawVals, optVals) {
+    // rawVals & optVals same length, null = dash
+    if (!ho) return smRow(rawVals);
+    const allNums = [];
+    for (let i = 0; i < rawVals.length; i++) {
+      if (rawVals[i] !== null) { allNums.push(rawVals[i]); allNums.push(optVals[i]); }
+    }
+    const g = fmtEBGroup(...allNums, _eb);
+    let gi = 0;
+    return rawVals.map((v, i) => {
+      if (v === null) return '\u2014';
+      const rawF = g[gi++], optF = g[gi++];
+      return '<span style="text-decoration:line-through;opacity:0.5;font-size:11px">' + rawF + '</span> ' + optF;
+    });
+  }
   let sm = '<div class="summary-grid">';
-  sm += `<div class="summary-box"><h3>AI DRAM Demand</h3><div class="big-num">${fmtEB(R.ai_dram_2028)}</div><div class="sub-num">2028</div><div class="big-num" style="margin-top:8px">${fmtEB(R.ai_dram_2031)}</div><div class="sub-num">2031</div></div>`;
-  sm += `<div class="summary-box"><h3>AI NAND Demand</h3><div class="big-num">${fmtEB(R.ai_nand_2028)}</div><div class="sub-num">2028</div><div class="big-num" style="margin-top:8px">${fmtEB(R.ai_nand_2031)}</div><div class="sub-num">2031</div></div>`;
-  sm += '</div>';
+  { const dg = fmtEBGroup(R.ai_dram_2028, R.ai_dram_2031, _eb);
+    sm += '<div class="summary-box"><h3>AI DRAM Demand</h3>';
+    if (ho) { const drg = fmtEBGroup(R.ai_dram_raw_2028, R.ai_dram_raw_2031, _eb);
+      sm += '<div class="big-num">' + dg[0] + '</div><div class="sub-num">2028 <span style="font-size:10px;opacity:0.6">(was ' + drg[0] + ')</span></div>';
+      sm += '<div class="big-num" style="margin-top:8px">' + dg[1] + '</div><div class="sub-num">2031 <span style="font-size:10px;opacity:0.6">(was ' + drg[1] + ')</span></div>';
+    } else {
+      sm += '<div class="big-num">' + dg[0] + '</div><div class="sub-num">2028</div>';
+      sm += '<div class="big-num" style="margin-top:8px">' + dg[1] + '</div><div class="sub-num">2031</div>';
+    }
+    sm += '</div>'; }
+  { const ng = fmtEBGroup(R.ai_nand_2028, R.ai_nand_2031, _eb);
+    sm += '<div class="summary-box"><h3>AI NAND Demand</h3>';
+    if (ho) { const nrg = fmtEBGroup(R.ai_nand_raw_2028, R.ai_nand_raw_2031, _eb);
+      sm += '<div class="big-num">' + ng[0] + '</div><div class="sub-num">2028 <span style="font-size:10px;opacity:0.6">(was ' + nrg[0] + ')</span></div>';
+      sm += '<div class="big-num" style="margin-top:8px">' + ng[1] + '</div><div class="sub-num">2031 <span style="font-size:10px;opacity:0.6">(was ' + nrg[1] + ')</span></div>';
+    } else {
+      sm += '<div class="big-num">' + ng[0] + '</div><div class="sub-num">2028</div>';
+      sm += '<div class="big-num" style="margin-top:8px">' + ng[1] + '</div><div class="sub-num">2031</div>';
+    }
+    sm += '</div></div>'; }
 
   sm += '<table style="color:#e2e8f0"><thead><tr style="border-color:rgba(255,255,255,0.2)"><th style="color:#94a3c4">Component</th><th class="num" style="color:#94a3c4">DRAM 2028</th><th class="num" style="color:#94a3c4">NAND 2028</th><th class="num" style="color:#94a3c4">DRAM 2031</th><th class="num" style="color:#94a3c4">NAND 2031</th></tr></thead><tbody>';
-  sm += `<tr><td>Transient KV Cache (DRAM tier)</td><td class="num">${fmtEB(R.kv_dram_2028)}</td><td class="num">—</td><td class="num">${fmtEB(R.kv_dram_2031)}</td><td class="num">—</td></tr>`;
-  sm += `<tr><td>Transient KV Cache (NAND tier)</td><td class="num">—</td><td class="num">${fmtEB(R.kv_nand_2028)}</td><td class="num">—</td><td class="num">${fmtEB(R.kv_nand_2031)}</td></tr>`;
-  sm += `<tr><td>Persistent KV Cache → NAND</td><td class="num">—</td><td class="num">${fmtEB(R.kv_persist_nand_2028 * R.replMult)}</td><td class="num">—</td><td class="num">${fmtEB(R.kv_persist_nand_2031 * R.replMult)}</td></tr>`;
-  sm += `<tr><td>RAG Storage</td><td class="num">${fmtEB(R.rag_total_dram_2028)}</td><td class="num">${fmtEB(R.rag_total_nand_2028 * R.replMult)}</td><td class="num">${fmtEB(R.rag_total_dram_2031)}</td><td class="num">${fmtEB(R.rag_total_nand_2031 * R.replMult)}</td></tr>`;
-  sm += `<tr><td>Non-KV/RAG (weights, training, gen content)</td><td class="num">—</td><td class="num">${fmtEB(R.nk_total_2028 * R.replMult)}</td><td class="num">—</td><td class="num">${fmtEB(R.nk_total_2031 * R.replMult)}</td></tr>`;
-  sm += `<tr><td>Server DRAM overhead (20%)</td><td class="num">${fmtEB(R.ai_dram_2028 - (R.kv_dram_2028 + R.rag_total_dram_2028))}</td><td class="num">—</td><td class="num">${fmtEB(R.ai_dram_2031 - (R.kv_dram_2031 + R.rag_total_dram_2031))}</td><td class="num">—</td></tr>`;
-  sm += `<tr style="border-top:2px solid rgba(255,255,255,0.3)"><td style="font-weight:800">TOTAL AI DEMAND</td><td class="num" style="font-weight:800;font-size:14px">${fmtEB(R.ai_dram_2028)}</td><td class="num" style="font-weight:800;font-size:14px">${fmtEB(R.ai_nand_2028)}</td><td class="num" style="font-weight:800;font-size:14px">${fmtEB(R.ai_dram_2031)}</td><td class="num" style="font-weight:800;font-size:14px">${fmtEB(R.ai_nand_2031)}</td></tr>`;
+  { const r1 = smOptRow([R.kv_dram_2028, null, R.kv_dram_2031, null], [R.kv_dram_2028/kf, null, R.kv_dram_2031/kf, null]);
+    sm += `<tr><td>Transient KV Cache (DRAM tier)</td><td class="num">${r1[0]}</td><td class="num">${r1[1]}</td><td class="num">${r1[2]}</td><td class="num">${r1[3]}</td></tr>`; }
+  { const r2 = smOptRow([R.kv_warm_dram_2028, null, R.kv_warm_dram_2031, null], [R.kv_warm_dram_2028/kf, null, R.kv_warm_dram_2031/kf, null]);
+    sm += `<tr><td>Retained / Warm KV (DRAM)</td><td class="num">${r2[0]}</td><td class="num">${r2[1]}</td><td class="num">${r2[2]}</td><td class="num">${r2[3]}</td></tr>`; }
+  { const r3 = smOptRow([null, R.kv_nand_2028, null, R.kv_nand_2031], [null, R.kv_nand_2028/kf, null, R.kv_nand_2031/kf]);
+    sm += `<tr><td>Transient KV Cache (NAND tier)</td><td class="num">${r3[0]}</td><td class="num">${r3[1]}</td><td class="num">${r3[2]}</td><td class="num">${r3[3]}</td></tr>`; }
+  { const r4 = smOptRow([null, R.kv_persist_nand_2028*R.replMult, null, R.kv_persist_nand_2031*R.replMult], [null, R.kv_persist_nand_2028*R.replMult/kf, null, R.kv_persist_nand_2031*R.replMult/kf]);
+    sm += `<tr><td>Persistent KV Cache \u2192 NAND</td><td class="num">${r4[0]}</td><td class="num">${r4[1]}</td><td class="num">${r4[2]}</td><td class="num">${r4[3]}</td></tr>`; }
+  { const r5 = smOptRow([R.rag_total_dram_2028, R.rag_total_nand_2028*R.replMult, R.rag_total_dram_2031, R.rag_total_nand_2031*R.replMult], [R.rag_total_dram_2028, R.rag_total_nand_2028*R.replMult/sf, R.rag_total_dram_2031, R.rag_total_nand_2031*R.replMult/sf]);
+    sm += `<tr><td>RAG Storage</td><td class="num">${r5[0]}</td><td class="num">${r5[1]}</td><td class="num">${r5[2]}</td><td class="num">${r5[3]}</td></tr>`; }
+  { const r6 = smOptRow([null, R.nk_total_2028*R.replMult, null, R.nk_total_2031*R.replMult], [null, R.nk_total_2028*R.replMult/sf, null, R.nk_total_2031*R.replMult/sf]);
+    sm += `<tr><td>Non-KV/RAG (weights, training, gen content)</td><td class="num">${r6[0]}</td><td class="num">${r6[1]}</td><td class="num">${r6[2]}</td><td class="num">${r6[3]}</td></tr>`; }
+  const dramOH28 = R.ai_dram_2028 * (1 - 1/D.computeParams.dramOverhead);
+  const dramOH31 = R.ai_dram_2031 * (1 - 1/D.computeParams.dramOverhead);
+  { const r7 = smRow([dramOH28, null, dramOH31, null]);
+    sm += `<tr><td>Server DRAM overhead (20%)</td><td class="num">${r7[0]}</td><td class="num">${r7[1]}</td><td class="num">${r7[2]}</td><td class="num">${r7[3]}</td></tr>`; }
+  { const r8 = fmtEBGroup(R.ai_dram_2028, R.ai_nand_2028, R.ai_dram_2031, R.ai_nand_2031, _eb);
+    sm += `<tr style="border-top:2px solid rgba(255,255,255,0.3)"><td style="font-weight:800">TOTAL AI DEMAND</td><td class="num" style="font-weight:800;font-size:14px">${r8[0]}</td><td class="num" style="font-weight:800;font-size:14px">${r8[1]}</td><td class="num" style="font-weight:800;font-size:14px">${r8[2]}</td><td class="num" style="font-weight:800;font-size:14px">${r8[3]}</td></tr>`; }
   sm += '</tbody></table>';
   document.getElementById('summary-body').innerHTML = sm;
 
@@ -1172,7 +1489,7 @@ function renderWithResults(R) {
 
   // Available
   wf += '<div class="wf-divider"></div>';
-  wf += `<div class="wf-row"><div class="wf-label" style="font-weight:700">Available for AI</div><div class="wf-bar-container"><div class="wf-bar available" style="left:0;width:${barPct(availAI)}%">${Math.round(availAI)} EB</div></div></div>`;
+  wf += `<div class="wf-row"><div class="wf-label" style="font-weight:700">Available for AI</div><div class="wf-bar-container"><div class="wf-bar available" style="left:0;width:${barPct(availAI)}%">${Math.round(availAI)}</div></div></div>`;
 
   // AI Demand
   wf += `<div class="wf-row"><div class="wf-label">&minus; AI NAND Demand</div><div class="wf-bar-container"><div class="wf-bar demand-bar" style="left:${Math.max(0, (availAI - aiDemand)/ maxVal * 100)}%;width:${barPct(aiDemand)}%">${Math.round(aiDemand)}</div></div></div>`;
@@ -1180,27 +1497,76 @@ function renderWithResults(R) {
   // Surplus/Deficit
   wf += '<div class="wf-divider"></div>';
   if (surplus >= 0) {
-    wf += `<div class="wf-row"><div class="wf-label" style="font-weight:800;color:var(--surplus)">SURPLUS</div><div class="wf-bar-container"><div class="wf-bar surplus-bar" style="left:0;width:${barPct(surplus)}%">${Math.round(surplus)} EB</div></div></div>`;
+    wf += `<div class="wf-row"><div class="wf-label" style="font-weight:800;color:var(--surplus)">SURPLUS</div><div class="wf-bar-container"><div class="wf-bar surplus-bar" style="left:0;width:${barPct(surplus)}%">${Math.round(surplus)}</div></div></div>`;
   } else {
-    wf += `<div class="wf-row"><div class="wf-label" style="font-weight:800;color:var(--deficit)">DEFICIT</div><div class="wf-bar-container"><div class="wf-bar deficit-bar" style="left:0;width:${barPct(surplus)}%">(${Math.round(Math.abs(surplus))}) EB</div></div></div>`;
+    wf += `<div class="wf-row"><div class="wf-label" style="font-weight:800;color:var(--deficit)">DEFICIT</div><div class="wf-bar-container"><div class="wf-bar deficit-bar" style="left:0;width:${barPct(surplus)}%">(${Math.round(Math.abs(surplus))})</div></div></div>`;
   }
   wf += '</div>';
 
-  // DRAM summary
-  wf += '<h3 style="font-size:13px;margin:20px 0 8px;color:var(--navy)">DRAM Supply Check (' + yr + ')</h3>';
-  const dramSupply = R[`dram_supply_${yr}`];
-  const dramServer = R[`dram_server_${yr}`];
-  const dramAIAvail = R[`dram_ai_avail_${yr}`];
-  const dramDemand = R[`ai_dram_${yr}`];
-  const dramSurplus = R[`dram_surplus_${yr}`];
-  const dramSurplusColor = dramSurplus >= 0 ? 'var(--surplus)' : 'var(--deficit)';
-  wf += '<table style="max-width:700px"><thead><tr><th></th><th class="num">EB</th></tr></thead><tbody>';
-  wf += `<tr><td>Total DRAM Supply</td><td class="num">${scenario === 'custom' ? editableRaw(dramSupply, 'dramSupply.total.custom.'+nsIdx) + ' EB' : fmtEB(dramSupply)}</td></tr>`;
-  wf += `<tr><td>Server DRAM (${scenario==='custom' ? editableRaw(D.dramSupply.serverPct[yr], 'dramSupply.serverPct.'+yr) : (D.dramSupply.serverPct[yr]*100).toFixed(0)+'%'})</td><td class="num">${fmtEB(dramServer)}</td></tr>`;
-  wf += `<tr><td>AI share of server DRAM (${scenario==='custom' ? editableRaw(D.dramSupply.aiSharePct[yr], 'dramSupply.aiSharePct.'+yr) : (D.dramSupply.aiSharePct[yr]*100).toFixed(0)+'%'})</td><td class="num">${fmtEB(dramAIAvail)}</td></tr>`;
-  wf += `<tr><td>AI DRAM Demand (this model)</td><td class="num">${fmtEB(dramDemand)}</td></tr>`;
-  wf += `<tr class="total-row"><td>${dramSurplus >= 0 ? 'SURPLUS' : 'DEFICIT'}</td><td class="num" style="color:${dramSurplusColor};font-weight:800">${dramSurplus >= 0 ? '' : '('}${fmtEB(Math.abs(dramSurplus))}${dramSurplus >= 0 ? '' : ')'}</td></tr>`;
+  // DRAM Waterfall — full bridge chart
+  wf += '<div class="wf-divider" style="margin:48px 0 16px;border-top-width:3px"></div>';
+  wf += '<h3 style="font-size:15px;margin:0 0 12px;color:var(--navy);font-weight:700">DRAM Supply Waterfall (' + yr + ')</h3>';
+  const dS = R[`dram_supply_${yr}`];
+  const dSmartphone = R[`dram_smartphone_${yr}`];
+  const dPC = R[`dram_pc_${yr}`];
+  const dConsElec = R[`dram_consumerElec_${yr}`];
+  const dAuto = R[`dram_automotive_${yr}`];
+  const dOther = R[`dram_other_${yr}`];
+  const dServer = R[`dram_server_${yr}`];
+  const dNonAISrv = R[`dram_nonAI_server_${yr}`];
+  const dAIAvail = R[`dram_ai_avail_${yr}`];
+  const dDemand = R[`ai_dram_${yr}`];
+  const dSurplus = R[`dram_surplus_${yr}`];
+  const dSurplusPct = R[`dram_surplus_pct_${yr}`];
+  const dSurplusColor = dSurplus >= 0 ? 'var(--surplus)' : 'var(--deficit)';
+
+  // DRAM Table
+  wf += '<table><thead><tr><th></th><th class="num">EB</th><th class="num">% of Supply</th></tr></thead><tbody>';
+  wf += `<tr><td style="font-weight:700">Total DRAM Supply (${yr})</td><td class="num" style="font-weight:700">${scenario === 'custom' ? editableRaw(dS, 'dramSupply.total.custom.'+nsIdx) + ' EB' : fmtEB(dS)}</td><td class="num">100%</td></tr>`;
+  wf += `<tr><td>&minus; Smartphones / Mobile</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dSmartphone)}</td><td class="num">${scenario==='custom' ? editableRaw(D.dramSupply.smartphonePct[yr], 'dramSupply.smartphonePct.'+yr) : (dSmartphone/dS*100).toFixed(1)+'%'}</td></tr>`;
+  wf += `<tr><td>&minus; PCs / Laptops</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dPC)}</td><td class="num">${scenario==='custom' ? editableRaw(D.dramSupply.pcPct[yr], 'dramSupply.pcPct.'+yr) : (dPC/dS*100).toFixed(1)+'%'}</td></tr>`;
+  wf += `<tr><td>&minus; Consumer Electronics</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dConsElec)}</td><td class="num">${scenario==='custom' ? editableRaw(D.dramSupply.consumerElecPct[yr], 'dramSupply.consumerElecPct.'+yr) : (dConsElec/dS*100).toFixed(1)+'%'}</td></tr>`;
+  wf += `<tr><td>&minus; Automotive</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dAuto)}</td><td class="num">${scenario==='custom' ? editableRaw(D.dramSupply.automotivePct[yr], 'dramSupply.automotivePct.'+yr) : (dAuto/dS*100).toFixed(1)+'%'}</td></tr>`;
+  wf += `<tr><td>&minus; Other (IoT, Industrial, Networking)</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dOther)}</td><td class="num">${scenario==='custom' ? editableRaw(D.dramSupply.otherPct[yr], 'dramSupply.otherPct.'+yr) : (dOther/dS*100).toFixed(1)+'%'}</td></tr>`;
+  wf += `<tr><td>&minus; Non-AI Server / DC</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dNonAISrv)}</td><td class="num">${(dNonAISrv/dS*100).toFixed(1)}%</td></tr>`;
+  wf += `<tr class="subtotal-row"><td>= Available for AI</td><td class="num" style="color:#8b5cf6;font-weight:700">${fmtEB(dAIAvail)}</td><td class="num">${(dAIAvail/dS*100).toFixed(1)}%</td></tr>`;
+  wf += `<tr><td>&minus; AI DRAM Demand (this model)</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dDemand)}</td><td class="num">${(dDemand/dS*100).toFixed(1)}%</td></tr>`;
+  const dLabel = dSurplus >= 0 ? 'SURPLUS' : 'DEFICIT';
+  wf += `<tr class="total-row"><td style="font-size:14px">${dLabel}</td><td class="num" style="color:${dSurplusColor};font-size:16px;font-weight:800">${dSurplus >= 0 ? '' : '('}${fmtEB(Math.abs(dSurplus))}${dSurplus >= 0 ? '' : ')'}</td><td class="num" style="color:${dSurplusColor};font-size:14px;font-weight:800">${fmtPct(dSurplusPct)}</td></tr>`;
   wf += '</tbody></table>';
+
+  // DRAM bar chart
+  const dMaxVal = dS;
+  function dBarPct(v) { return Math.max(2, Math.abs(v) / dMaxVal * 100); }
+  wf += '<div class="waterfall-chart" style="margin-top:20px">';
+  wf += `<div class="wf-row"><div class="wf-label">Total DRAM Supply</div><div class="wf-bar-container"><div class="wf-bar total-bar" style="left:0;width:${dBarPct(dS)}%">${fmtEB(dS)}</div></div></div>`;
+
+  let dRunning = dS;
+  const dDeductions = [
+    ['Smartphones / Mobile', dSmartphone],
+    ['PCs / Laptops', dPC],
+    ['Consumer Electronics', dConsElec],
+    ['Automotive', dAuto],
+    ['Other (IoT/Industrial)', dOther],
+    ['Non-AI Server / DC', dNonAISrv]
+  ];
+  dDeductions.forEach(([label, val]) => {
+    const left = (dRunning - val) / dMaxVal * 100;
+    wf += `<div class="wf-row"><div class="wf-label">&minus; ${label}</div><div class="wf-bar-container"><div class="wf-bar negative" style="left:${Math.max(0,left)}%;width:${dBarPct(val)}%">${fmtEBn(val)}</div></div></div>`;
+    dRunning -= val;
+  });
+
+  wf += '<div class="wf-divider"></div>';
+  wf += `<div class="wf-row"><div class="wf-label" style="font-weight:700">Available for AI</div><div class="wf-bar-container"><div class="wf-bar available" style="left:0;width:${dBarPct(dAIAvail)}%">${fmtEBn(dAIAvail)}</div></div></div>`;
+  wf += `<div class="wf-row"><div class="wf-label">&minus; AI DRAM Demand</div><div class="wf-bar-container"><div class="wf-bar demand-bar" style="left:${Math.max(0, (dAIAvail - dDemand)/ dMaxVal * 100)}%;width:${dBarPct(dDemand)}%">${fmtEBn(dDemand)}</div></div></div>`;
+
+  wf += '<div class="wf-divider"></div>';
+  if (dSurplus >= 0) {
+    wf += `<div class="wf-row"><div class="wf-label" style="font-weight:800;color:var(--surplus)">SURPLUS</div><div class="wf-bar-container"><div class="wf-bar surplus-bar" style="left:0;width:${dBarPct(dSurplus)}%">${fmtEBn(dSurplus)}</div></div></div>`;
+  } else {
+    wf += `<div class="wf-row"><div class="wf-label" style="font-weight:800;color:var(--deficit)">DEFICIT</div><div class="wf-bar-container"><div class="wf-bar deficit-bar" style="left:0;width:${dBarPct(dSurplus)}%">(${fmtEBn(Math.abs(dSurplus))})</div></div></div>`;
+  }
+  wf += '</div>';
 
   document.getElementById('waterfall-body').innerHTML = wf;
 }
