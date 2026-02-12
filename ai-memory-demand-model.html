@@ -532,7 +532,7 @@ const DEFAULTS = {
       peakFactor: 1.5
     },
     agentic: {
-      kvHoldPerTaskSec:      { 2026: 300, 2028: 55, 2031: 45 },
+      kvHoldPerTaskSec:      { 2026: 300, 2028: 90, 2031: 60 },
       peakFactor: 1.2
     }
   },
@@ -541,8 +541,8 @@ const DEFAULTS = {
   memTierSplit: {
     // [HBM%, DRAM%, NAND%]
     2026: { bear: [0.70, 0.25, 0.05], base: [0.70, 0.25, 0.05], bull: [0.70, 0.25, 0.05] },
-    2028: { bear: [0.35, 0.35, 0.30], base: [0.35, 0.35, 0.30], bull: [0.10, 0.35, 0.55] },
-    2031: { bear: [0.17, 0.35, 0.48], base: [0.17, 0.35, 0.48], bull: [0.06, 0.35, 0.59] }
+    2028: { bear: [0.21, 0.35, 0.44], base: [0.21, 0.35, 0.44], bull: [0.06, 0.35, 0.59] },
+    2031: { bear: [0.12, 0.35, 0.53], base: [0.12, 0.35, 0.53], bull: [0.04, 0.35, 0.61] }
   },
   persistKVPct: {
     consumer: 0.05,
@@ -565,17 +565,17 @@ const DEFAULTS = {
     consumer: {
       users_2026: 50e6,
       users: { bear: [200e6, 500e6], base: [300e6, 1e9], bull: [500e6, 2e9] },
-      storagePerUser: { 2026: 20, 2028: 50, 2031: 200 } // MB
+      storagePerUser: { 2026: 48, 2028: 120, 2031: 480 } // MB (monthly ÷5, ×12 mo; assumes deletion after 1 year)
     },
     enterprise: {
       orgs_2026: 20e3,
       orgs: { bear: [80e3, 200e3], base: [120e3, 400e3], bull: [200e3, 800e3] },
-      storagePerOrg: { 2026: 200e3, 2028: 1e6, 2031: 2.5e6 } // MB (200GB, 1TB, 2.5TB)
+      storagePerOrg: { 2026: 480e3, 2028: 2.4e6, 2031: 6e6 } // MB (480GB, 2.4TB, 6TB; assumes deletion after 1 year)
     },
     agentic: {
       instances_2026: 15e6,
       instances: { bear: [160e6, 250e6], base: [300e6, 650e6], bull: [700e6, 1.2e9] },
-      storagePerAgent: { 2026: 100, 2028: 1000, 2031: 1500 } // MB
+      storagePerAgent: { 2026: 240, 2028: 2400, 2031: 3600 } // MB (assumes deletion after 1 year)
     },
     dramHotPct: { 2026: 0.15, 2028: 0.15, 2031: 0.10 },
     embeddingOverhead: 4.0  // raw docs → chunked + embedded + indexed
@@ -591,7 +591,7 @@ const DEFAULTS = {
   },
 
   // ---- Layer 7: Replication ----
-  replicationMultiplier: { bear: 2.5, base: 3.0, bull: 3.5 },
+  replicationMultiplier: { bear: 4.5, base: 5.5, bull: 6.5 },
 
   // ---- Layer 9: Supply ----
   nandSupply: {
@@ -1144,7 +1144,7 @@ function renderWithResults(R) {
     ['Avg context length growth', { bear:'2x every 3 years', base:'4x every 3 years', bull:'8x every 3 years' }],
     ['KV cache efficiency gains', { bear:'Gradual GQA tuning', base:'Gradual GQA tuning', bull:'Gradual GQA tuning' }],
     ['RAG adoption depth', { bear:'Shallow (few docs, 4x embed overhead)', base:'Moderate (deep KBs, 4x embed overhead)', bull:'Deep (full org memory, 4x embed overhead)' }],
-    ['Replication factor', { bear:'2.5x', base:'3.0x', bull:'3.5x' }],
+    ['Replication factor', { bear:'4.5x', base:'5.5x', bull:'6.5x' }],
     ['NAND supply bit growth', { bear:'18% CAGR', base:'15% CAGR', bull:'12% CAGR (constrained)' }],
   ];
   let dtHTML = '<thead><tr><th style="width:220px">Driver</th><th>Bear</th><th>Base</th><th>Bull</th></tr></thead><tbody>';
@@ -1160,9 +1160,9 @@ function renderWithResults(R) {
   dtHTML += '</tbody>';
   document.getElementById('drivers-table').innerHTML = dtHTML;
   const scenarioNotes = {
-    bear: '<strong>Bear case:</strong> AI adoption follows a measured trajectory. ~250K enterprise orgs by 2028, cautious rollout. Agentic AI remains narrow. KV cache uses baseline GQA architecture; MLA/FP4 gains shown separately in Optimizations. RAG includes 4x embedding overhead. NAND supply grows at a healthy 18% CAGR — no shortage.',
-    base: '<strong>Base case:</strong> AI adoption hits an S-curve inflection in 2027. ~350K enterprise orgs in 2028, broadening to ~1M by 2031. Agentic use cases scale significantly. RAG includes 4x embedding overhead (chunking, vectors, indexes). NAND supply grows at ~15% CAGR, roughly tracking historical averages.',
-    bull: '<strong>Bull case:</strong> AI becomes ubiquitous infrastructure. ~500K enterprise orgs by 2028, reaching 1.6M by 2031. Agents run continuously across every industry. Context windows explode, RAG becomes deep organizational memory with 4x embedding overhead. Meanwhile, NAND supply is constrained (12% CAGR) as wafer allocation shifts to HBM. This creates structural shortage.',
+    bear: '<strong>Bear case:</strong> AI adoption follows a measured trajectory. ~250K enterprise orgs by 2028, cautious rollout. Agentic AI remains narrow. KV cache uses baseline GQA architecture; MLA/FP4 gains shown separately in Optimizations. RAG includes 4x embedding overhead. NAND supply grows at a healthy 18% CAGR — no shortage.<br><br><em style="color:var(--text-muted);font-size:12px">Note: This model does not account for the massive increase in AI-generated content that will be created, nor does it account for emerging use cases like multimodal (video, audio, 3D) which will drive significant additional memory demand.</em>',
+    base: '<strong>Base case:</strong> AI adoption hits an S-curve inflection in 2027. ~350K enterprise orgs in 2028, broadening to ~1M by 2031. Agentic 1B active instances in 2028 reflects roughly half of today\'s ~60M software developers each orchestrating ~10 agents with ~3 subagents each. By 2031, 2.5B instances reflects a portion of the broader knowledge worker base each using 2\u201310 agents (including subagents). RAG includes 4x embedding overhead (chunking, vectors, indexes). NAND supply grows at ~15% CAGR, roughly tracking historical averages.<br><br><em style="color:var(--text-muted);font-size:12px">Note: This model does not account for the massive increase in AI-generated content that will be created, nor does it account for emerging use cases like multimodal (video, audio, 3D) which will drive significant additional memory demand.</em>',
+    bull: '<strong>Bull case:</strong> AI becomes ubiquitous infrastructure. ~500K enterprise orgs by 2028, reaching 1.6M by 2031. Agentic 2B active instances in 2028 reflects roughly half of knowledge workers (~1B) each using a few agents; by 2031, 5B instances reflects the full knowledge worker base each using ~5 agents (including subagents). Context windows explode, RAG becomes deep organizational memory with 4x embedding overhead. Meanwhile, NAND supply is constrained (12% CAGR) as wafer allocation shifts to HBM. This creates structural shortage.<br><br><em style="color:var(--text-muted);font-size:12px">Note: This model does not account for the massive increase in AI-generated content that will be created, nor does it account for emerging use cases like multimodal (video, audio, 3D) which will drive significant additional memory demand.</em>',
     custom: '<strong>Custom scenario:</strong> Edit any numeric value in the tables below. Initialized from ' + customScenarioSource.charAt(0).toUpperCase() + customScenarioSource.slice(1) + ' defaults. Use the "Reset to..." dropdown to start fresh from another scenario.'
   };
   document.getElementById('scenario-note').innerHTML = scenarioNotes[sc];
@@ -1341,12 +1341,12 @@ function renderWithResults(R) {
 
   // Layer 7
   let l7 = '<table style="max-width:600px"><thead><tr><th>Factor</th><th class="num">Value</th><th>Rationale</th></tr></thead><tbody>';
-  l7 += `<tr><td>Data replication</td><td class="num">3x</td><td>Cloud standard durability + availability</td></tr>`;
+  l7 += `<tr><td>Data replication</td><td class="num">3.0x</td><td>Cloud standard durability + availability</td></tr>`;
   l7 += `<tr><td>Geographic distribution</td><td class="num">1.5x</td><td>Multi-region latency requirements</td></tr>`;
-  l7 += `<tr><td>Backup/snapshot</td><td class="num">1.2x</td><td>Point-in-time recovery</td></tr>`;
+  l7 += `<tr><td>Backup/snapshot</td><td class="num">1.0x</td><td>Point-in-time recovery</td></tr>`;
   l7 += `<tr class="total-row"><td>Combined multiplier (${scLabel})</td><td class="num">${editableRaw(R.replMult, 'replicationMultiplier.custom')}x</td><td>Applied to persistent data (RAG + non-KV/RAG). Not applied to transient KV.</td></tr>`;
   l7 += '</tbody></table>';
-  l7 += '<p class="note">Bull case uses 3.5x due to stricter geo-distribution requirements and compliance overhead. Bear case assumes more efficient deduplication (2.5x).</p>';
+  l7 += '<p class="note">Bull case uses 6.5x due to stricter geo-distribution requirements and compliance overhead. Bear case assumes more efficient deduplication (4.5x).</p>';
   if (scenario === 'custom') {
     l7 += '<h3 style="font-size:13px;margin:16px 0 8px;color:var(--navy)">Compute Parameters</h3>';
     l7 += '<table style="max-width:600px"><thead><tr><th>Parameter</th><th class="num">Value</th><th>Description</th></tr></thead><tbody>';
