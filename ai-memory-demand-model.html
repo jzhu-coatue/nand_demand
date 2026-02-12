@@ -488,11 +488,11 @@ const DEFAULTS = {
     mau_2026: 1500e6,
     mau: { bear: [2e9, 3e9], base: [2.5e9, 4.5e9], bull: [3.5e9, 6e9] },
     dauPct: 0.45,
-    queriesPerDAU: { 2026: 8, 2028: 12, 2031: 20 }
+    queriesPerDAU: { 2026: 15, 2028: 25, 2031: 40 }
   },
   enterprise: {
-    orgs_2026: 500e3,
-    orgs: { bear: [1.5e6, 4e6], base: [2e6, 6e6], bull: [3e6, 10e6] },
+    orgs_2026: 1e6,
+    orgs: { bear: [2.5e6, 6e6], base: [3.5e6, 10e6], bull: [5e6, 16e6] },
     callsPerOrgDay_2026: 10e3,
     callsPerOrgDay: { bear: [30e3, 100e3], base: [50e3, 200e3], bull: [80e3, 500e3] }
   },
@@ -511,20 +511,20 @@ const DEFAULTS = {
   },
 
   // ---- Layer 3: KV Cache ----
-  kvBytesPerToken: { // MB — baseline GQA, flat (MLA/FP4 in Optimizations)
-    consumer: { 2026: 0.16, 2028: 0.16, 2031: 0.16 },
-    enterprise: { 2026: 0.20, 2028: 0.20, 2031: 0.20 },
-    agentic: { 2026: 0.12, 2028: 0.12, 2031: 0.12 }
+  kvBytesPerToken: { // MB — FP16 GQA baseline (FP8/FP4/MLA in Optimizations)
+    consumer: { 2026: 0.32, 2028: 0.32, 2031: 0.32 },
+    enterprise: { 2026: 0.40, 2028: 0.40, 2031: 0.40 },
+    agentic: { 2026: 0.38, 2028: 0.38, 2031: 0.38 }
   },
   contextLength: {
     consumer: { 2026: 8000, 2028: 24000, 2031: 32000 },
     enterprise: { 2026: 64000, 2028: 200000, 2031: 256000 },
-    agentic: { 2026: 200000, 2028: 750000, 2031: 1000000 }
+    agentic: { 2026: 128000, 2028: 500000, 2031: 750000 }
   },
   concurrencyParams: {
     consumer: {
       sessionsPerDay:        { 2026: 2.5, 2028: 3.5, 2031: 5.0 },
-      avgSessionDurationSec: { 2026: 150, 2028: 270, 2031: 270 },
+      avgSessionDurationSec: { 2026: 300, 2028: 420, 2031: 420 },
       peakFactor: 1.3
     },
     enterprise: {
@@ -541,7 +541,7 @@ const DEFAULTS = {
   memTierSplit: {
     // [HBM%, DRAM%, NAND%]
     2026: [0.70, 0.25, 0.05],
-    2028: [0.55, 0.30, 0.15],
+    2028: [0.50, 0.35, 0.15],
     2031: [0.40, 0.35, 0.25]
   },
   persistKVPct: {
@@ -577,7 +577,7 @@ const DEFAULTS = {
       instances: { bear: [160e6, 250e6], base: [300e6, 650e6], bull: [700e6, 1.2e9] },
       storagePerAgent: { 2026: 100, 2028: 1000, 2031: 2000 } // MB
     },
-    dramHotPct: { 2026: 0.15, 2028: 0.12, 2031: 0.10 }
+    dramHotPct: { 2026: 0.15, 2028: 0.15, 2031: 0.10 }
   },
 
   // ---- Layer 6: Non-KV/RAG ---- [bear, base, bull] for [2028, 2031]
@@ -630,7 +630,7 @@ const OPTIMIZATIONS = [
   { id: 'mla',          label: 'Multi-Latent Attention (MLA)',  factor: 5.0, category: 'kv',      desc: '93% KV compression (DeepSeek architecture)' },
   { id: 'prefixCache',  label: 'Prefix / Prompt Caching',      factor: 1.5, category: 'kv',      desc: 'Deduplicate shared system prompt KV across requests' },
   { id: 'slidingWindow',label: 'Sliding Window Attention',     factor: 2.0, category: 'kv',      desc: 'Limit attention to recent token window (Mistral-style)' },
-  { id: 'pagedAttn',    label: 'PagedAttention / vLLM',        factor: 3.0, category: 'kv',      desc: 'Virtual memory for KV cache, <4% fragmentation waste' },
+  { id: 'pagedAttn',    label: 'PagedAttention / vLLM',        factor: 1.3, category: 'kv',      desc: 'Virtual paging reduces KV fragmentation from ~70% to <4%' },
   { id: 'erasureCoding',label: 'Erasure Coding',               factor: 2.0, category: 'storage', desc: 'Replace 3x replication with erasure codes (~1.5x overhead)' },
 ];
 let optEnabled = { bear: {}, base: {}, bull: {}, custom: {} };
