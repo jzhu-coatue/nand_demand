@@ -497,8 +497,8 @@ const DEFAULTS = {
     callsPerOrgDay: { bear: [30e3, 100e3], base: [50e3, 200e3], bull: [80e3, 500e3] }
   },
   agentic: {
-    instances_2026: 20e6,
-    instances: { bear: [200e6, 350e6], base: [500e6, 900e6], bull: [800e6, 1.5e9] },
+    instances_2026: 30e6,
+    instances: { bear: [300e6, 525e6], base: [750e6, 1.35e9], bull: [1.2e9, 2.25e9] },
     tasksPerDay_2026: 20,
     tasksPerDay: { bear: [80, 120], base: [200, 350], bull: [350, 500] }
   },
@@ -601,14 +601,14 @@ const DEFAULTS = {
     nonAIEntPct:    { 2026: 0.07, 2028: 0.06, 2031: 0.06 }
   },
   dramSupply: {
-    total:      { 2026: 155, bear: [58.9, 90], base: [58.9, 90], bull: [58.9, 90] },
-    smartphonePct:  { 2026: 0.30, 2028: 0.28, 2031: 0.22 },
-    pcPct:          { 2026: 0.22, 2028: 0.18, 2031: 0.14 },
+    total:      { 2026: 155, bear: [58.9, 120], base: [58.9, 135], bull: [58.9, 155] },
+    smartphonePct:  { 2026: 0.30, 2028: 0.28, 2031: 0.24 },
+    pcPct:          { 2026: 0.22, 2028: 0.18, 2031: 0.15 },
     consumerElecPct:{ 2026: 0.04, 2028: 0.03, 2031: 0.02 },
-    automotivePct:  { 2026: 0.02, 2028: 0.03, 2031: 0.04 },
+    automotivePct:  { 2026: 0.02, 2028: 0.03, 2031: 0.05 },
     otherPct:       { 2026: 0.04, 2028: 0.06, 2031: 0.08 },
     serverPct:      { 2026: 0.38, 2028: 0.42, 2031: 0.50 },
-    aiSharePct:     { 2026: 0.25, 2028: 0.35, 2031: 0.50 }
+    aiSharePct:     { 2026: 0.25, 2028: 0.35, 2031: 0.55 }
   },
 
   // ---- Compute Parameters (formerly hardcoded in compute()) ----
@@ -631,6 +631,7 @@ const OPTIMIZATIONS = [
   { id: 'prefixCache',  label: 'Prefix / Prompt Caching',      factor: 1.5, category: 'kv',      desc: 'Deduplicate shared system prompt KV across requests' },
   { id: 'slidingWindow',label: 'Sliding Window Attention',     factor: 2.0, category: 'kv',      desc: 'Limit attention to recent token window (Mistral-style)' },
   { id: 'pagedAttn',    label: 'PagedAttention / vLLM',        factor: 1.3, category: 'kv',      desc: 'Virtual paging reduces KV fragmentation from ~70% to <4%' },
+  { id: 'hySparse',     label: 'HySparse (Hybrid Sparse Attn)', factor: 10.0, category: 'kv',     desc: '10x KV reduction via sparse attention over full context' },
   { id: 'erasureCoding',label: 'Erasure Coding',               factor: 2.0, category: 'storage', desc: 'Replace 3x replication with erasure codes (~1.5x overhead)' },
 ];
 let optEnabled = { bear: {}, base: {}, bull: {}, custom: {} };
