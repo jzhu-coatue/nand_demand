@@ -540,9 +540,9 @@ const DEFAULTS = {
   // ---- Layer 4: Memory Hierarchy ----
   memTierSplit: {
     // [HBM%, DRAM%, NAND%]
-    2026: [0.70, 0.25, 0.05],
-    2028: [0.35, 0.35, 0.30],
-    2031: [0.17, 0.35, 0.48]
+    2026: { bear: [0.70, 0.25, 0.05], base: [0.70, 0.25, 0.05], bull: [0.70, 0.25, 0.05] },
+    2028: { bear: [0.35, 0.35, 0.30], base: [0.35, 0.35, 0.30], bull: [0.10, 0.35, 0.55] },
+    2031: { bear: [0.17, 0.35, 0.48], base: [0.17, 0.35, 0.48], bull: [0.06, 0.35, 0.59] }
   },
   persistKVPct: {
     consumer: 0.05,
@@ -660,6 +660,10 @@ function initCustom(fromSc) {
   D.nonKVRAG.aiGenContent.custom = D.nonKVRAG.aiGenContent[fromSc].slice();
   D.nonKVRAG.logsTelemetry.custom = D.nonKVRAG.logsTelemetry[fromSc].slice();
   D.nonKVRAG.finetuneData.custom = D.nonKVRAG.finetuneData[fromSc].slice();
+  // Layer 4: Memory tier split
+  for (const yr of [2026, 2028, 2031]) {
+    D.memTierSplit[yr].custom = D.memTierSplit[yr][fromSc].slice();
+  }
   // Layer 7: Replication
   D.replicationMultiplier.custom = D.replicationMultiplier[fromSc];
   // Supply
@@ -949,7 +953,7 @@ function compute(sc) {
   // Layer 4: memory tier split (bytes → EB: /1e18)
   function toEB(bytes) { return bytes / 1e18; }
   for (const yr of [2026,2028,2031]) {
-    const split = D.memTierSplit[yr];
+    const split = D.memTierSplit[yr][sc];
     R[`kv_hbm_${yr}`] = toEB(R[`kv_total_${yr}`]) * split[0];
     R[`kv_dram_${yr}`] = toEB(R[`kv_total_${yr}`]) * split[1];
     R[`kv_nand_${yr}`] = toEB(R[`kv_total_${yr}`]) * split[2];
@@ -1259,11 +1263,11 @@ function renderWithResults(R) {
   l4 += '<table><thead><tr><th>Tier</th><th class="num">2026</th><th class="num">% </th><th class="num">2028</th><th class="num">%</th><th class="num">2031</th><th class="num">%</th></tr></thead><tbody>';
   for (const [tier, idx] of [['HBM (on-GPU)', 0],['DRAM (host)', 1],['NAND (SSD)', 2]]) {
     l4 += `<tr><td>${tier}</td>`;
-    const tierVals = [2026,2028,2031].map(yr => (R[`kv_total_${yr}`]/1e18) * D.memTierSplit[yr][idx]);
+    const tierVals = [2026,2028,2031].map(yr => (R[`kv_total_${yr}`]/1e18) * D.memTierSplit[yr][scenario][idx]);
     const tierFmt = fmtEBGroup(...tierVals);
     [2026,2028,2031].forEach((yr, i) => {
-      const pct = D.memTierSplit[yr][idx];
-      l4 += `<td class="num">${tierFmt[i]}</td><td class="num" style="color:var(--text-muted)">${scenario === 'custom' ? editableRaw(pct, 'memTierSplit.'+yr+'.'+idx) : (pct*100).toFixed(0) + '%'}</td>`;
+      const pct = D.memTierSplit[yr][scenario][idx];
+      l4 += `<td class="num">${tierFmt[i]}</td><td class="num" style="color:var(--text-muted)">${scenario === 'custom' ? editableRaw(pct, 'memTierSplit.'+yr+'.custom.'+idx) : (pct*100).toFixed(0) + '%'}</td>`;
     });
     l4 += '</tr>';
   }
