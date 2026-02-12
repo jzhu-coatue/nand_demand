@@ -517,9 +517,9 @@ const DEFAULTS = {
     agentic: { 2026: 0.38, 2028: 0.38, 2031: 0.38 }
   },
   contextLength: {
-    consumer: { 2026: 8000, 2028: 24000, 2031: 32000 },
-    enterprise: { 2026: 64000, 2028: 200000, 2031: 256000 },
-    agentic: { 2026: 128000, 2028: 500000, 2031: 750000 }
+    consumer: { 2026: 6400, 2028: 19200, 2031: 25600 },
+    enterprise: { 2026: 64000, 2028: 300000, 2031: 384000 },
+    agentic: { 2026: 128000, 2028: 750000, 2031: 1125000 }
   },
   concurrencyParams: {
     consumer: {
@@ -570,12 +570,12 @@ const DEFAULTS = {
     enterprise: {
       orgs_2026: 200e3,
       orgs: { bear: [800e3, 2e6], base: [1.2e6, 4e6], bull: [2e6, 8e6] },
-      storagePerOrg: { 2026: 2e6, 2028: 10e6, 2031: 50e6 } // MB = TB*1e6/1e6
+      storagePerOrg: { 2026: 2e6, 2028: 10e6, 2031: 25e6 } // MB = TB*1e6/1e6
     },
     agentic: {
       instances_2026: 15e6,
       instances: { bear: [160e6, 250e6], base: [300e6, 650e6], bull: [700e6, 1.2e9] },
-      storagePerAgent: { 2026: 100, 2028: 1000, 2031: 2000 } // MB
+      storagePerAgent: { 2026: 100, 2028: 1000, 2031: 1500 } // MB
     },
     dramHotPct: { 2026: 0.15, 2028: 0.15, 2031: 0.10 }
   },
