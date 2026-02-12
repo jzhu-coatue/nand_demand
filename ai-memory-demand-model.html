@@ -1497,13 +1497,18 @@ function renderWithResults(R) {
 
   // AI Demand
   const nandDemandOverflows = barOverflows(aiDemand);
-  const nandDemandAlign = nandDemandOverflows ? 'justify-content:flex-start;padding-left:8px;padding-right:0' : '';
-  wf += `<div class="wf-row"><div class="wf-label">&minus; AI NAND Demand</div><div class="wf-bar-container"><div class="wf-bar demand-bar" style="left:${Math.max(0, (availAI - aiDemand)/ maxVal * 100)}%;width:${barPct(aiDemand)}%;${nandDemandAlign}">${Math.round(aiDemand)}</div></div></div>`;
+  if (nandDemandOverflows) {
+    wf += `<div class="wf-row"><div class="wf-label">&minus; AI NAND Demand</div><div class="wf-bar-container"><div class="wf-bar demand-bar" style="left:${Math.max(0, (availAI - aiDemand)/ maxVal * 100)}%;width:${barPct(aiDemand)}%"></div><span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-family:'SF Mono',Menlo,monospace;font-size:11px;font-weight:600;color:#fff;z-index:1">${Math.round(aiDemand)}</span></div></div>`;
+  } else {
+    wf += `<div class="wf-row"><div class="wf-label">&minus; AI NAND Demand</div><div class="wf-bar-container"><div class="wf-bar demand-bar" style="left:${Math.max(0, (availAI - aiDemand)/ maxVal * 100)}%;width:${barPct(aiDemand)}%">${Math.round(aiDemand)}</div></div></div>`;
+  }
 
   // Surplus/Deficit
   wf += '<div class="wf-divider"></div>';
   if (surplus >= 0) {
     wf += `<div class="wf-row"><div class="wf-label" style="font-weight:800;color:var(--surplus)">SURPLUS</div><div class="wf-bar-container"><div class="wf-bar surplus-bar" style="left:0;width:${barPct(surplus)}%">${Math.round(surplus)}</div></div></div>`;
+  } else if (barOverflows(surplus)) {
+    wf += `<div class="wf-row"><div class="wf-label" style="font-weight:800;color:var(--deficit)">DEFICIT</div><div class="wf-bar-container"><div class="wf-bar deficit-bar" style="left:0;width:${barPct(surplus)}%"></div><span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-family:'SF Mono',Menlo,monospace;font-size:11px;font-weight:600;color:#fff;z-index:1">(${Math.round(Math.abs(surplus))})</span></div></div>`;
   } else {
     wf += `<div class="wf-row"><div class="wf-label" style="font-weight:800;color:var(--deficit)">DEFICIT</div><div class="wf-bar-container"><div class="wf-bar deficit-bar" style="left:0;width:${barPct(surplus)}%">(${Math.round(Math.abs(surplus))})</div></div></div>`;
   }
@@ -1568,12 +1573,17 @@ function renderWithResults(R) {
   wf += '<div class="wf-divider"></div>';
   wf += `<div class="wf-row"><div class="wf-label" style="font-weight:700">Available for AI</div><div class="wf-bar-container"><div class="wf-bar available" style="left:0;width:${dBarPct(dAIAvail)}%">${fmtEBn(dAIAvail)}</div></div></div>`;
   const dramDemandOverflows = dBarOverflows(dDemand);
-  const dramDemandAlign = dramDemandOverflows ? 'justify-content:flex-start;padding-left:8px;padding-right:0' : '';
-  wf += `<div class="wf-row"><div class="wf-label">&minus; AI DRAM Demand</div><div class="wf-bar-container"><div class="wf-bar demand-bar" style="left:${Math.max(0, (dAIAvail - dDemand)/ dMaxVal * 100)}%;width:${dBarPct(dDemand)}%;${dramDemandAlign}">${fmtEBn(dDemand)}</div></div></div>`;
+  if (dramDemandOverflows) {
+    wf += `<div class="wf-row"><div class="wf-label">&minus; AI DRAM Demand</div><div class="wf-bar-container"><div class="wf-bar demand-bar" style="left:${Math.max(0, (dAIAvail - dDemand)/ dMaxVal * 100)}%;width:${dBarPct(dDemand)}%"></div><span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-family:'SF Mono',Menlo,monospace;font-size:11px;font-weight:600;color:#fff;z-index:1">${fmtEBn(dDemand)}</span></div></div>`;
+  } else {
+    wf += `<div class="wf-row"><div class="wf-label">&minus; AI DRAM Demand</div><div class="wf-bar-container"><div class="wf-bar demand-bar" style="left:${Math.max(0, (dAIAvail - dDemand)/ dMaxVal * 100)}%;width:${dBarPct(dDemand)}%">${fmtEBn(dDemand)}</div></div></div>`;
+  }
 
   wf += '<div class="wf-divider"></div>';
   if (dSurplus >= 0) {
     wf += `<div class="wf-row"><div class="wf-label" style="font-weight:800;color:var(--surplus)">SURPLUS</div><div class="wf-bar-container"><div class="wf-bar surplus-bar" style="left:0;width:${dBarPct(dSurplus)}%">${fmtEBn(dSurplus)}</div></div></div>`;
+  } else if (dBarOverflows(dSurplus)) {
+    wf += `<div class="wf-row"><div class="wf-label" style="font-weight:800;color:var(--deficit)">DEFICIT</div><div class="wf-bar-container"><div class="wf-bar deficit-bar" style="left:0;width:${dBarPct(dSurplus)}%"></div><span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-family:'SF Mono',Menlo,monospace;font-size:11px;font-weight:600;color:#fff;z-index:1">(${fmtEBn(Math.abs(dSurplus))})</span></div></div>`;
   } else {
     wf += `<div class="wf-row"><div class="wf-label" style="font-weight:800;color:var(--deficit)">DEFICIT</div><div class="wf-bar-container"><div class="wf-bar deficit-bar" style="left:0;width:${dBarPct(dSurplus)}%">(${fmtEBn(Math.abs(dSurplus))})</div></div></div>`;
   }
