@@ -594,11 +594,11 @@ const DEFAULTS = {
 
   // ---- Layer 9: Supply ----
   nandSupply: {
-    total:    { 2026: 1200, bear: [1692, 2350], base: [1692, 2500], bull: [1692, 2100] },
-    smartphonePct:  { 2026: 0.40, 2028: 0.38, 2031: 0.33 },
-    consumerPCPct:  { 2026: 0.20, 2028: 0.18, 2031: 0.15 },
-    otherPct:       { 2026: 0.10, 2028: 0.09, 2031: 0.08 },
-    nonAIEntPct:    { 2026: 0.07, 2028: 0.06, 2031: 0.05 }
+    total:    { 2026: 1200, bear: [1692, 3200], base: [1692, 3059], bull: [1692, 2600] },
+    smartphonePct:  { 2026: 0.40, 2028: 0.38, 2031: 0.29 },
+    consumerPCPct:  { 2026: 0.20, 2028: 0.18, 2031: 0.13 },
+    otherPct:       { 2026: 0.10, 2028: 0.09, 2031: 0.07 },
+    nonAIEntPct:    { 2026: 0.07, 2028: 0.06, 2031: 0.06 }
   },
   dramSupply: {
     total:      { 2026: 155, bear: [58.9, 90], base: [58.9, 90], bull: [58.9, 90] },
@@ -1463,11 +1463,14 @@ function renderWithResults(R) {
   const surplusColor = surplus >= 0 ? 'var(--surplus)' : 'var(--deficit)';
   const surplusLabel = surplus >= 0 ? 'SURPLUS' : 'DEFICIT';
   wf += `<tr class="total-row"><td style="font-size:14px">${surplusLabel}</td><td class="num" style="color:${surplusColor};font-size:16px;font-weight:800">${surplus >= 0 ? '' : '('}${fmtEB(Math.abs(surplus))}${surplus >= 0 ? '' : ')'}</td><td class="num" style="color:${surplusColor};font-size:14px;font-weight:800">${fmtPct(surplusPct)}</td></tr>`;
+  const nandDemandMultiple = availAI > 0 ? (aiDemand / availAI).toFixed(1) : '—';
+  wf += `<tr><td style="font-size:13px;color:var(--muted);font-style:italic;font-weight:700;padding-top:4px">Memo: AI Demand / Available</td><td class="num" style="font-size:13px;color:var(--muted);font-style:italic;font-weight:700;padding-top:4px">${nandDemandMultiple}x</td><td></td></tr>`;
   wf += '</tbody></table>';
 
   // Waterfall bar chart
   const maxVal = totalSupply;
   function barPct(v) { return Math.max(2, Math.abs(v) / maxVal * 100); }
+  function barOverflows(v) { return Math.abs(v) / maxVal * 100 > 100; }
 
   wf += '<div class="waterfall-chart" style="margin-top:20px">';
   // Supply bar
@@ -1492,7 +1495,9 @@ function renderWithResults(R) {
   wf += `<div class="wf-row"><div class="wf-label" style="font-weight:700">Available for AI</div><div class="wf-bar-container"><div class="wf-bar available" style="left:0;width:${barPct(availAI)}%">${Math.round(availAI)}</div></div></div>`;
 
   // AI Demand
-  wf += `<div class="wf-row"><div class="wf-label">&minus; AI NAND Demand</div><div class="wf-bar-container"><div class="wf-bar demand-bar" style="left:${Math.max(0, (availAI - aiDemand)/ maxVal * 100)}%;width:${barPct(aiDemand)}%">${Math.round(aiDemand)}</div></div></div>`;
+  const nandDemandOverflows = barOverflows(aiDemand);
+  const nandDemandAlign = nandDemandOverflows ? 'justify-content:flex-start;padding-left:8px;padding-right:0' : '';
+  wf += `<div class="wf-row"><div class="wf-label">&minus; AI NAND Demand</div><div class="wf-bar-container"><div class="wf-bar demand-bar" style="left:${Math.max(0, (availAI - aiDemand)/ maxVal * 100)}%;width:${barPct(aiDemand)}%;${nandDemandAlign}">${Math.round(aiDemand)}</div></div></div>`;
 
   // Surplus/Deficit
   wf += '<div class="wf-divider"></div>';
@@ -1533,11 +1538,14 @@ function renderWithResults(R) {
   wf += `<tr><td>&minus; AI DRAM Demand (this model)</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dDemand)}</td><td class="num">${(dDemand/dS*100).toFixed(1)}%</td></tr>`;
   const dLabel = dSurplus >= 0 ? 'SURPLUS' : 'DEFICIT';
   wf += `<tr class="total-row"><td style="font-size:14px">${dLabel}</td><td class="num" style="color:${dSurplusColor};font-size:16px;font-weight:800">${dSurplus >= 0 ? '' : '('}${fmtEB(Math.abs(dSurplus))}${dSurplus >= 0 ? '' : ')'}</td><td class="num" style="color:${dSurplusColor};font-size:14px;font-weight:800">${fmtPct(dSurplusPct)}</td></tr>`;
+  const dramDemandMultiple = dAIAvail > 0 ? (dDemand / dAIAvail).toFixed(1) : '—';
+  wf += `<tr><td style="font-size:13px;color:var(--muted);font-style:italic;font-weight:700;padding-top:4px">Memo: AI Demand / Available</td><td class="num" style="font-size:13px;color:var(--muted);font-style:italic;font-weight:700;padding-top:4px">${dramDemandMultiple}x</td><td></td></tr>`;
   wf += '</tbody></table>';
 
   // DRAM bar chart
   const dMaxVal = dS;
   function dBarPct(v) { return Math.max(2, Math.abs(v) / dMaxVal * 100); }
+  function dBarOverflows(v) { return Math.abs(v) / dMaxVal * 100 > 100; }
   wf += '<div class="waterfall-chart" style="margin-top:20px">';
   wf += `<div class="wf-row"><div class="wf-label">Total DRAM Supply</div><div class="wf-bar-container"><div class="wf-bar total-bar" style="left:0;width:${dBarPct(dS)}%">${fmtEB(dS)}</div></div></div>`;
 
@@ -1558,7 +1566,9 @@ function renderWithResults(R) {
 
   wf += '<div class="wf-divider"></div>';
   wf += `<div class="wf-row"><div class="wf-label" style="font-weight:700">Available for AI</div><div class="wf-bar-container"><div class="wf-bar available" style="left:0;width:${dBarPct(dAIAvail)}%">${fmtEBn(dAIAvail)}</div></div></div>`;
-  wf += `<div class="wf-row"><div class="wf-label">&minus; AI DRAM Demand</div><div class="wf-bar-container"><div class="wf-bar demand-bar" style="left:${Math.max(0, (dAIAvail - dDemand)/ dMaxVal * 100)}%;width:${dBarPct(dDemand)}%">${fmtEBn(dDemand)}</div></div></div>`;
+  const dramDemandOverflows = dBarOverflows(dDemand);
+  const dramDemandAlign = dramDemandOverflows ? 'justify-content:flex-start;padding-left:8px;padding-right:0' : '';
+  wf += `<div class="wf-row"><div class="wf-label">&minus; AI DRAM Demand</div><div class="wf-bar-container"><div class="wf-bar demand-bar" style="left:${Math.max(0, (dAIAvail - dDemand)/ dMaxVal * 100)}%;width:${dBarPct(dDemand)}%;${dramDemandAlign}">${fmtEBn(dDemand)}</div></div></div>`;
 
   wf += '<div class="wf-divider"></div>';
   if (dSurplus >= 0) {
