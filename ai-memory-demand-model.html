@@ -461,7 +461,8 @@ footer strong { color: var(--text); }
 
   <footer>
     <strong>Sources &amp; Methodology:</strong> ChatGPT/OpenAI usage (DemandSage, Backlinko); McKinsey State of AI 2024 (65% enterprise adoption); Gartner (80% AI by 2026, agentic projections); Salesforce/IBM agent forecasts; Microsoft Copilot adoption data. KV cache architecture from Llama 3.1 (Meta), DeepSeek V3 (MLA). NAND supply estimates from TrendForce, Yole Group, IDC. DRAM supply from TrendForce, IC Insights. Replication assumptions based on hyperscaler standard practices (AWS 3-AZ, GCP multi-region). All figures are estimates built from first principles and triangulated against analyst consensus where available.<br><br>
-    <strong>Model formula:</strong> NAND demand = (Persistent_KV + RAG_storage + non_KV_RAG_data) &times; replication_multiplier + Transient_KV_NAND. DRAM demand = (Transient_KV_DRAM + Warm_KV_DRAM + RAG_DRAM_hot_tier) &times; 1.2 overhead. Surplus/Deficit = available_for_AI &minus; AI_demand.
+    <strong>Model formula:</strong> NAND demand = (Persistent_KV + RAG_storage + non_KV_RAG_data) &times; replication_multiplier + Transient_KV_NAND. DRAM demand = (Transient_KV_DRAM + Warm_KV_DRAM + RAG_DRAM_hot_tier) &times; 1.2 overhead. Surplus/Deficit = available_for_AI &minus; AI_demand.<br>
+    <strong>Key methodology:</strong> KV persistence = peak 1-hour concurrent KV &times; persist%, no multi-day accumulation. Model weights = GPU replicas (from active decoding sessions &div; sessions/replica) &times; disk checkpoint size. Logs = daily tokens &times; bytes/token &times; retention days. Memory tier split derived from activeDecodingPct per segment.
   </footer>
 </div>
 
@@ -474,7 +475,7 @@ const DEFAULTS = {
   // ---- Layer 1: User / Instance Base ----
   // Scenario-dependent: keyed per scenario { sq, bear, base, bull }
   consumer: {
-    mau: { sq: 1500e6, bear: 3e9, base: 4.5e9, bull: 6e9 },
+    mau: { sq: 1.5e9, bear: 2.5e9, base: 4e9, bull: 5.5e9 },
     dauPct: 0.45,
     queriesPerDAU: { sq: 15, future: 40 }
   },
@@ -510,37 +511,29 @@ const DEFAULTS = {
     consumer: {
       sessionsPerDay:        { sq: 2.5, future: 5.0 },
       avgSessionDurationSec: { sq: 300, future: 420 },
-      peakFactor: 1.3
+      peakFactor: 3.0
     },
     enterprise: {
       effectiveKVHoldSec:    { sq: 12.0, future: 2.0 },
-      peakFactor: 1.5
+      peakFactor: 3.0
     },
     agentic: {
       kvHoldPerTaskSec:      { sq: 300, future: 60 },
-      peakFactor: 1.2
+      peakFactor: 3.0
     }
   },
 
   // ---- Layer 4: Memory Hierarchy ----
-  // [HBM%, DRAM%, NAND%] — scenario-dependent
-  memTierSplit: {
-    sq:   [0.70, 0.25, 0.05],
-    bear: [0.12, 0.35, 0.53],
-    base: [0.12, 0.35, 0.53],
-    bull: [0.04, 0.35, 0.61]
-  },
+  // Tier split now derived from gpu.activeDecodingPct + gpu.dramShareOfOffloaded
   persistKVPct: {
     consumer: 0.05,
     enterprise: 0.30,
     agentic: 0.80
   },
 
-  // KV Retention — accumulation over time
+  // KV Retention — warm fraction of peak concurrent KV kept in DRAM
   kvRetention: {
-    persistRetentionDays: { consumer: 1, enterprise: 7, agentic: 3 },
-    warmPct: { consumer: 0.15, enterprise: 0.40, agentic: 0.60 },
-    warmRetentionHours: { consumer: 4, enterprise: 8, agentic: 2 }
+    warmPct: { consumer: 0.15, enterprise: 0.40, agentic: 0.60 }
   },
 
   // ---- Layer 5: RAG ----
@@ -562,12 +555,32 @@ const DEFAULTS = {
   },
 
   // ---- Layer 6: Non-KV/RAG ---- scenario-dependent scalars
+  // modelWeights: now derived from GPU replica count
+  // logsTelemetry: now derived from token volume
   nonKVRAG: {
-    modelWeights:    { sq: 5, bear: 18, base: 40, bull: 90 },
-    trainingData:    { sq: 10, bear: 30, base: 70, bull: 180 },
-    aiGenContent:    { sq: 3, bear: 14, base: 40, bull: 120 },
-    logsTelemetry:   { sq: 3, bear: 14, base: 30, bull: 70 },
-    finetuneData:    { sq: 1, bear: 5, base: 16, bull: 40 }
+    trainingData:    { sq: 2, bear: 5, base: 10, bull: 25 },
+    aiGenContent:    { sq: 1, bear: 3, base: 8, bull: 20 },
+    finetuneData:    { sq: 0.5, bear: 2, base: 5, bull: 12 }
+  },
+
+  // ---- GPU Replica Parameters (scenario-independent hardware) ----
+  gpu: {
+    hbmPerReplica:       2.3,   // TB — 8×VR200 @ 288 GB HBM4 each
+    modelWeightSizeHBM:  1.5,   // TB — large model (~1T params) in mixed precision
+    modelWeightSizeDisk: 0.5,   // TB — quantized on-disk checkpoint
+    activeDecodingPct: {        // fraction of concurrent sessions actively on GPU
+      consumer: 0.08, enterprise: 0.12, agentic: 0.04
+    },
+    avgContextFillPct: {        // avg context utilization vs max window (PagedAttention allocates on-demand)
+      consumer: 0.15, enterprise: 0.10, agentic: 0.40
+    },
+    dramShareOfOffloaded: 0.30  // of KV not in HBM, 30% in DRAM, 70% in NAND
+  },
+
+  // ---- Logs/Telemetry Parameters ----
+  logs: {
+    bytesPerToken: 0.4,   // bytes of log data per token (audit, traces, metrics)
+    retentionDays: 90     // regulatory/observability retention
   },
 
   // ---- Layer 7: Replication ----
@@ -585,9 +598,7 @@ const DEFAULTS = {
 
   // ---- Compute Parameters ----
   computeParams: {
-    sessionTurnover: 10,
     dramOverhead: 1.2,
-    baselineSqPersistWeight: 0.3,
     baselineSqReplMult: 2.5
   }
 };
@@ -624,14 +635,10 @@ function initCustom(fromSc) {
   D.rag.consumer.users.custom = D.rag.consumer.users[fromSc];
   D.rag.enterprise.orgs.custom = D.rag.enterprise.orgs[fromSc];
   D.rag.agentic.instances.custom = D.rag.agentic.instances[fromSc];
-  // Non-KV/RAG
-  D.nonKVRAG.modelWeights.custom = D.nonKVRAG.modelWeights[fromSc];
+  // Non-KV/RAG (modelWeights and logsTelemetry now derived, not copied)
   D.nonKVRAG.trainingData.custom = D.nonKVRAG.trainingData[fromSc];
   D.nonKVRAG.aiGenContent.custom = D.nonKVRAG.aiGenContent[fromSc];
-  D.nonKVRAG.logsTelemetry.custom = D.nonKVRAG.logsTelemetry[fromSc];
   D.nonKVRAG.finetuneData.custom = D.nonKVRAG.finetuneData[fromSc];
-  // Memory tier split (array — needs .slice())
-  D.memTierSplit.custom = D.memTierSplit[fromSc].slice();
   // Replication
   D.replicationMultiplier.custom = D.replicationMultiplier[fromSc];
   // Supply
@@ -790,7 +797,7 @@ function applyOptimizations(R, sc) {
   // KV-related DRAM: transient KV tier + warm KV
   const kvDramRaw = R.kv_dram + R.kv_warm_dram;
   const kvDramOpt = kvDramRaw / kvFactor;
-  R.ai_dram = (kvDramOpt + R.rag_total_dram) * D.computeParams.dramOverhead;
+  R.ai_dram = (kvDramOpt + R.rag_total_dram + R.nk_weights_dram) * D.computeParams.dramOverhead;
   // NAND: KV tiers reduced by kvFactor, persistent storage by storageFactor
   const kvNandTier = R.kv_nand / kvFactor;
   const persistKV = R.kv_persist_nand / kvFactor;
@@ -883,33 +890,51 @@ function compute(sc) {
   }
   R.kv_total = R.kv_c + R.kv_e + R.kv_a;
 
-  // Layer 4: memory tier split (bytes → EB: /1e18)
+  // Layer 4: memory tier split — derived from activeDecodingPct per segment
   function toEB(bytes) { return bytes / 1e18; }
-  const split = D.memTierSplit[sc];
-  R.kv_hbm = toEB(R.kv_total) * split[0];
-  R.kv_dram = toEB(R.kv_total) * split[1];
-  R.kv_nand = toEB(R.kv_total) * split[2];
+  const gpu = D.gpu;
+  let kvHbm = 0, kvDram = 0, kvNand = 0;
+  for (const seg of ['consumer','enterprise','agentic']) {
+    const s = seg.charAt(0);
+    const kvEB = toEB(R[`kv_${s}`]);
+    const adp = gpu.activeDecodingPct[seg];
+    const hbmPortion = kvEB * adp;
+    const offloaded = kvEB * (1 - adp);
+    const dramPortion = offloaded * gpu.dramShareOfOffloaded;
+    const nandPortion = offloaded * (1 - gpu.dramShareOfOffloaded);
+    R[`kv_hbm_${s}`] = hbmPortion;
+    R[`kv_dram_${s}`] = dramPortion;
+    R[`kv_nand_${s}`] = nandPortion;
+    kvHbm += hbmPortion;
+    kvDram += dramPortion;
+    kvNand += nandPortion;
+  }
+  R.kv_hbm = kvHbm;
+  R.kv_dram = kvDram;
+  R.kv_nand = kvNand;
+  // Effective tier split percentages (for display)
+  const kvTotalEB = toEB(R.kv_total);
+  R.kv_hbm_pct = kvTotalEB > 0 ? kvHbm / kvTotalEB : 0;
+  R.kv_dram_pct = kvTotalEB > 0 ? kvDram / kvTotalEB : 0;
+  R.kv_nand_pct = kvTotalEB > 0 ? kvNand / kvTotalEB : 0;
 
-  // Persistent KV → NAND
+  // Persistent KV → NAND: peak concurrent KV × persistKVPct (no multi-day accumulation)
   let persistNand = 0;
   for (const seg of ['consumer','enterprise','agentic']) {
     const s = seg.charAt(0);
-    const kvBytes = R[`kv_${s}`];
-    const dailyFlow = toEB(kvBytes) * D.persistKVPct[seg] * D.computeParams.sessionTurnover;
-    const retDays = D.kvRetention.persistRetentionDays[seg];
-    R[`kv_persist_${s}_nand`] = dailyFlow * retDays;
-    persistNand += dailyFlow * retDays;
+    const kvEB = toEB(R[`kv_${s}`]);
+    const segPersist = kvEB * D.persistKVPct[seg];
+    R[`kv_persist_${s}_nand`] = segPersist;
+    persistNand += segPersist;
   }
   R.kv_persist_nand = persistNand;
 
-  // Retained/warm KV in DRAM
+  // Warm KV in DRAM: peak concurrent KV × warmPct
   let warmDram = 0;
   for (const seg of ['consumer','enterprise','agentic']) {
     const s = seg.charAt(0);
-    const kvBytes = R[`kv_${s}`];
-    const warmKV = toEB(kvBytes) * D.computeParams.sessionTurnover
-                   * D.kvRetention.warmPct[seg]
-                   * (D.kvRetention.warmRetentionHours[seg] / 24);
+    const kvEB = toEB(R[`kv_${s}`]);
+    const warmKV = kvEB * D.kvRetention.warmPct[seg];
     R[`kv_warm_${s}_dram`] = warmKV;
     warmDram += warmKV;
   }
@@ -925,10 +950,46 @@ function compute(sc) {
 
   // Layer 6: Non-KV/RAG
   const nk = D.nonKVRAG;
-  R.nk_weights = nk.modelWeights[sc];
+
+  // --- Model weights: derived from GPU replica count ---
+  const availKV_HBM = gpu.hbmPerReplica - gpu.modelWeightSizeHBM; // TB left for KV per replica
+  let totalReplicas = 0;
+  for (const seg of ['consumer','enterprise','agentic']) {
+    const s = seg.charAt(0);
+    const concSessions = R[`cs_${s}`];
+    // PagedAttention allocates KV on-demand per-token, not for max context
+    const ctxLen = D.contextLength[seg][p];
+    const fillPct = gpu.avgContextFillPct[seg];
+    const effectiveCtx = ctxLen * fillPct;
+    const kvPerSessionMB = effectiveCtx * D.kvBytesPerToken[seg][p]; // MB
+    const kvPerSessionTB = kvPerSessionMB / 1e6; // MB → TB
+    const sessionsPerReplica = kvPerSessionTB > 0 ? Math.floor(availKV_HBM / kvPerSessionTB) : Infinity;
+    const activeSessions = concSessions * gpu.activeDecodingPct[seg];
+    const replicas = sessionsPerReplica > 0 ? Math.ceil(activeSessions / Math.max(1, sessionsPerReplica)) : 0;
+    R[`gpu_replicas_${s}`] = replicas;
+    R[`gpu_active_${s}`] = activeSessions;
+    R[`gpu_sess_per_repl_${s}`] = sessionsPerReplica;
+    R[`gpu_eff_ctx_${s}`] = effectiveCtx;
+    R[`gpu_kv_per_sess_${s}`] = kvPerSessionMB;
+    totalReplicas += replicas;
+  }
+  R.gpu_total_replicas = totalReplicas;
+  R.gpu_avail_kv_hbm = availKV_HBM;
+  R.nk_weights = totalReplicas * gpu.modelWeightSizeDisk / 1e6; // TB → EB
+  R.nk_weights_dram = totalReplicas * gpu.modelWeightSizeHBM / 1e6; // host DRAM mirrors HBM
+
+  // --- Logs/telemetry: derived from token volume ---
+  const dailyRequests_c = R.c_dau * D.consumer.queriesPerDAU[p];
+  const dailyRequests_e = R.e_orgs * R.e_calls;
+  const dailyRequests_a = R.a_inst * R.a_tasks;
+  const dailyTokens_c = dailyRequests_c * D.tokensPerQuery.consumer[p];
+  const dailyTokens_e = dailyRequests_e * D.tokensPerQuery.enterprise[p];
+  const dailyTokens_a = dailyRequests_a * D.tokensPerQuery.agentic[p];
+  R.daily_tokens_total = dailyTokens_c + dailyTokens_e + dailyTokens_a;
+  R.nk_logs = R.daily_tokens_total * D.logs.bytesPerToken * D.logs.retentionDays / 1e18; // → EB
+
   R.nk_training = nk.trainingData[sc];
   R.nk_aigen = nk.aiGenContent[sc];
-  R.nk_logs = nk.logsTelemetry[sc];
   R.nk_finetune = nk.finetuneData[sc];
   R.nk_total = R.nk_weights + R.nk_training + R.nk_aigen + R.nk_logs + R.nk_finetune;
 
@@ -937,16 +998,17 @@ function compute(sc) {
 
   // Layer 8: TOTALS
   if (sc === 'sq') {
-    // Status Quo baseline formula
-    const pn = R.kv_persist_nand * D.computeParams.baselineSqPersistWeight + R.rag_total_nand + R.nk_total;
-    R.ai_nand = pn * D.computeParams.baselineSqReplMult + R.kv_nand;
-    R.ai_dram = (R.kv_dram + R.kv_warm_dram + R.rag_total_dram) * D.computeParams.dramOverhead;
+    // Status Quo baseline formula (same persist formula, lower replication)
+    const persistentNand = R.kv_persist_nand + R.rag_total_nand + R.nk_total;
+    R.ai_nand_pre_repl = persistentNand;
+    R.ai_nand = (persistentNand * D.computeParams.baselineSqReplMult) + R.kv_nand;
+    R.ai_dram = (R.kv_dram + R.kv_warm_dram + R.rag_total_dram + R.nk_weights_dram) * D.computeParams.dramOverhead;
   } else {
     // Standard future formula
     const persistentNand = R.kv_persist_nand + R.rag_total_nand + R.nk_total;
     R.ai_nand_pre_repl = persistentNand;
     R.ai_nand = (persistentNand * R.replMult) + R.kv_nand;
-    const dramRaw = R.kv_dram + R.kv_warm_dram + R.rag_total_dram;
+    const dramRaw = R.kv_dram + R.kv_warm_dram + R.rag_total_dram + R.nk_weights_dram;
     R.ai_dram = dramRaw * D.computeParams.dramOverhead;
   }
 
@@ -1031,7 +1093,7 @@ function renderWithResults(R) {
 
   // Scenario drivers table
   const drivers = [
-    ['Consumer AI MAU', { sq:'~1.5B (current)', bear:'3B', base:'4.5B', bull:'6B' }],
+    ['Consumer AI MAU', { sq:'~1.5B (current)', bear:'2.5B', base:'4B', bull:'5.5B' }],
     ['Enterprise AI API orgs', { sq:'~100K (current)', bear:'600K', base:'1M', bull:'1.6M' }],
     ['Agentic AI scale', { sq:'~60M instances (nascent)', bear:'1.2B instances', base:'2.5B instances', bull:'5B instances' }],
     ['Context length', { sq:'6.4K–200K tokens', bear:'26K–2M tokens', base:'26K–2M tokens', bull:'26K–2M tokens' }],
@@ -1149,40 +1211,50 @@ function renderWithResults(R) {
   document.getElementById('layer3-body').innerHTML = l3;
 
   // Layer 4
-  let l4 = '<h3 style="font-size:13px;margin-bottom:8px;color:var(--navy)">Transient KV Cache — Memory Tier Distribution</h3>';
-  l4 += '<table><thead><tr><th>Tier</th><th class="num">Value</th><th class="num">%</th></tr></thead><tbody>';
-  for (const [tier, idx] of [['HBM (on-GPU)', 0],['DRAM (host)', 1],['NAND (SSD)', 2]]) {
-    const tierVal = (R.kv_total/1e18) * D.memTierSplit[sc][idx];
-    const pct = D.memTierSplit[sc][idx];
-    l4 += `<tr><td>${tier}</td><td class="num">${fmtEB(tierVal)}</td><td class="num" style="color:var(--text-muted)">${scenario === 'custom' ? editableRaw(pct, 'memTierSplit.custom.'+idx) : (pct*100).toFixed(0) + '%'}</td></tr>`;
+  let l4 = '<h3 style="font-size:13px;margin-bottom:8px;color:var(--navy)">Transient KV Cache — Memory Tier Distribution (Derived)</h3>';
+  l4 += '<table><thead><tr><th>Tier</th><th class="num">Value</th><th class="num">%</th><th>Derivation</th></tr></thead><tbody>';
+  const tierData = [
+    ['HBM (on-GPU)', R.kv_hbm, R.kv_hbm_pct, 'KV for actively decoding sessions'],
+    ['DRAM (host)', R.kv_dram, R.kv_dram_pct, 'Offloaded × dramShareOfOffloaded'],
+    ['NAND (SSD)', R.kv_nand, R.kv_nand_pct, 'Offloaded × (1 − dramShareOfOffloaded)']
+  ];
+  tierData.forEach(([tier, val, pct, desc]) => {
+    l4 += `<tr><td>${tier}</td><td class="num">${fmtEB(val)}</td><td class="num" style="color:var(--text-muted)">${(pct*100).toFixed(0)}%</td><td style="font-size:11px;color:var(--text-muted)">${desc}</td></tr>`;
+  });
+  l4 += '</tbody></table>';
+  l4 += '<p class="note"><strong>Formula:</strong> HBM = KV × activeDecodingPct. Offloaded = KV × (1 − activeDecodingPct). DRAM = offloaded × ' + (scenario==='custom' ? editableRaw(D.gpu.dramShareOfOffloaded, 'gpu.dramShareOfOffloaded') : (D.gpu.dramShareOfOffloaded*100).toFixed(0)+'%') + '. NAND = remainder. Sessions not actively decoding have their KV offloaded from GPU.</p>';
+
+  l4 += '<h3 style="font-size:13px;margin:16px 0 8px;color:var(--navy)">Active Decoding % (drives tier split)</h3>';
+  l4 += '<table><thead><tr><th>Segment</th><th class="num">Active Decoding %</th><th class="num">HBM</th><th class="num">DRAM</th><th class="num">NAND</th></tr></thead><tbody>';
+  for (const [seg, label, cls] of [['consumer','Consumer','seg-consumer'],['enterprise','Enterprise','seg-enterprise'],['agentic','Agentic','seg-agentic']]) {
+    const s = seg.charAt(0);
+    const adp = D.gpu.activeDecodingPct[seg];
+    l4 += `<tr><td><span class="segment-label ${cls}">${label}</span></td><td class="num">${scenario==='custom' ? editableRaw(adp, 'gpu.activeDecodingPct.'+seg) : (adp*100).toFixed(0)+'%'}</td><td class="num">${fmtEB(R['kv_hbm_'+s])}</td><td class="num">${fmtEB(R['kv_dram_'+s])}</td><td class="num">${fmtEB(R['kv_nand_'+s])}</td></tr>`;
   }
   l4 += '</tbody></table>';
-  l4 += '<p class="note"><strong>Formula:</strong> Tier demand = Total transient KV &times; tier percentage. As models outgrow HBM capacity, KV cache spills increasingly to DRAM and NAND tiers.</p>';
 
-  l4 += '<h3 style="font-size:13px;margin:16px 0 8px;color:var(--navy)">Persistent KV Cache Stock → NAND</h3>';
-  l4 += '<table><thead><tr><th>Segment</th><th class="num">Persist %</th><th class="num">Retention Days</th><th class="num">Stock</th></tr></thead><tbody>';
+  l4 += '<h3 style="font-size:13px;margin:16px 0 8px;color:var(--navy)">Persistent KV Cache → NAND</h3>';
+  l4 += '<table><thead><tr><th>Segment</th><th class="num">Persist %</th><th class="num">Stock</th></tr></thead><tbody>';
   const pkvC = D.persistKVPct.consumer, pkvE = D.persistKVPct.enterprise, pkvA = D.persistKVPct.agentic;
-  const retC = D.kvRetention.persistRetentionDays.consumer, retE = D.kvRetention.persistRetentionDays.enterprise, retA = D.kvRetention.persistRetentionDays.agentic;
-  l4 += `<tr><td><span class="segment-label seg-consumer">Consumer</span></td><td class="num">${scenario==='custom' ? editableRaw(pkvC, 'persistKVPct.consumer') : (pkvC*100).toFixed(0)+'%'}</td><td class="num">${scenario==='custom' ? editableRaw(retC, 'kvRetention.persistRetentionDays.consumer') : retC+'d'}</td><td class="num">${fmtEB(R.kv_persist_c_nand)}</td></tr>`;
-  l4 += `<tr><td><span class="segment-label seg-enterprise">Enterprise</span></td><td class="num">${scenario==='custom' ? editableRaw(pkvE, 'persistKVPct.enterprise') : (pkvE*100).toFixed(0)+'%'}</td><td class="num">${scenario==='custom' ? editableRaw(retE, 'kvRetention.persistRetentionDays.enterprise') : retE+'d'}</td><td class="num">${fmtEB(R.kv_persist_e_nand)}</td></tr>`;
-  l4 += `<tr><td><span class="segment-label seg-agentic">Agentic</span></td><td class="num">${scenario==='custom' ? editableRaw(pkvA, 'persistKVPct.agentic') : (pkvA*100).toFixed(0)+'%'}</td><td class="num">${scenario==='custom' ? editableRaw(retA, 'kvRetention.persistRetentionDays.agentic') : retA+'d'}</td><td class="num">${fmtEB(R.kv_persist_a_nand)}</td></tr>`;
-  l4 += `<tr class="total-row"><td>Total persistent KV → NAND</td><td></td><td></td><td class="num">${fmtEB(R.kv_persist_nand)}</td></tr>`;
+  l4 += `<tr><td><span class="segment-label seg-consumer">Consumer</span></td><td class="num">${scenario==='custom' ? editableRaw(pkvC, 'persistKVPct.consumer') : (pkvC*100).toFixed(0)+'%'}</td><td class="num">${fmtEB(R.kv_persist_c_nand)}</td></tr>`;
+  l4 += `<tr><td><span class="segment-label seg-enterprise">Enterprise</span></td><td class="num">${scenario==='custom' ? editableRaw(pkvE, 'persistKVPct.enterprise') : (pkvE*100).toFixed(0)+'%'}</td><td class="num">${fmtEB(R.kv_persist_e_nand)}</td></tr>`;
+  l4 += `<tr><td><span class="segment-label seg-agentic">Agentic</span></td><td class="num">${scenario==='custom' ? editableRaw(pkvA, 'persistKVPct.agentic') : (pkvA*100).toFixed(0)+'%'}</td><td class="num">${fmtEB(R.kv_persist_a_nand)}</td></tr>`;
+  l4 += `<tr class="total-row"><td>Total persistent KV → NAND</td><td></td><td class="num">${fmtEB(R.kv_persist_nand)}</td></tr>`;
   l4 += '</tbody></table>';
-  l4 += '<p class="note"><strong>Formula:</strong> Persistent KV Stock (NAND) = Transient KV Snapshot × Session Turnover (10×) × Persist % × Retention Days</p>';
+  l4 += '<p class="note"><strong>Formula:</strong> Persistent KV = Peak concurrent KV × persistKVPct. The 1-hour peak concurrent KV (already computed with 3× peak factor) is the stock that persists to NAND. No multi-day accumulation.</p>';
 
-  l4 += '<h3 style="font-size:13px;margin:16px 0 8px;color:var(--navy)">Retained / Warm KV in DRAM</h3>';
-  l4 += '<table><thead><tr><th>Segment</th><th class="num">Warm %</th><th class="num">Warm Hours</th><th class="num">Warm KV</th></tr></thead><tbody>';
+  l4 += '<h3 style="font-size:13px;margin:16px 0 8px;color:var(--navy)">Warm KV in DRAM</h3>';
+  l4 += '<table><thead><tr><th>Segment</th><th class="num">Warm %</th><th class="num">Warm KV</th></tr></thead><tbody>';
   const wPctC = D.kvRetention.warmPct.consumer, wPctE = D.kvRetention.warmPct.enterprise, wPctA = D.kvRetention.warmPct.agentic;
-  const wHrC = D.kvRetention.warmRetentionHours.consumer, wHrE = D.kvRetention.warmRetentionHours.enterprise, wHrA = D.kvRetention.warmRetentionHours.agentic;
-  l4 += `<tr><td><span class="segment-label seg-consumer">Consumer</span></td><td class="num">${scenario==='custom' ? editableRaw(wPctC, 'kvRetention.warmPct.consumer') : (wPctC*100).toFixed(0)+'%'}</td><td class="num">${scenario==='custom' ? editableRaw(wHrC, 'kvRetention.warmRetentionHours.consumer') : wHrC+'h'}</td><td class="num">${fmtEB(R.kv_warm_c_dram)}</td></tr>`;
-  l4 += `<tr><td><span class="segment-label seg-enterprise">Enterprise</span></td><td class="num">${scenario==='custom' ? editableRaw(wPctE, 'kvRetention.warmPct.enterprise') : (wPctE*100).toFixed(0)+'%'}</td><td class="num">${scenario==='custom' ? editableRaw(wHrE, 'kvRetention.warmRetentionHours.enterprise') : wHrE+'h'}</td><td class="num">${fmtEB(R.kv_warm_e_dram)}</td></tr>`;
-  l4 += `<tr><td><span class="segment-label seg-agentic">Agentic</span></td><td class="num">${scenario==='custom' ? editableRaw(wPctA, 'kvRetention.warmPct.agentic') : (wPctA*100).toFixed(0)+'%'}</td><td class="num">${scenario==='custom' ? editableRaw(wHrA, 'kvRetention.warmRetentionHours.agentic') : wHrA+'h'}</td><td class="num">${fmtEB(R.kv_warm_a_dram)}</td></tr>`;
-  l4 += `<tr class="total-row"><td>Total warm KV in DRAM</td><td></td><td></td><td class="num">${fmtEB(R.kv_warm_dram)}</td></tr>`;
+  l4 += `<tr><td><span class="segment-label seg-consumer">Consumer</span></td><td class="num">${scenario==='custom' ? editableRaw(wPctC, 'kvRetention.warmPct.consumer') : (wPctC*100).toFixed(0)+'%'}</td><td class="num">${fmtEB(R.kv_warm_c_dram)}</td></tr>`;
+  l4 += `<tr><td><span class="segment-label seg-enterprise">Enterprise</span></td><td class="num">${scenario==='custom' ? editableRaw(wPctE, 'kvRetention.warmPct.enterprise') : (wPctE*100).toFixed(0)+'%'}</td><td class="num">${fmtEB(R.kv_warm_e_dram)}</td></tr>`;
+  l4 += `<tr><td><span class="segment-label seg-agentic">Agentic</span></td><td class="num">${scenario==='custom' ? editableRaw(wPctA, 'kvRetention.warmPct.agentic') : (wPctA*100).toFixed(0)+'%'}</td><td class="num">${fmtEB(R.kv_warm_a_dram)}</td></tr>`;
+  l4 += `<tr class="total-row"><td>Total warm KV in DRAM</td><td></td><td class="num">${fmtEB(R.kv_warm_dram)}</td></tr>`;
   l4 += '</tbody></table>';
   { const dc = fmtEBGroup(R.kv_dram, R.kv_warm_dram, R.kv_dram + R.kv_warm_dram);
-    l4 += `<p class="note"><strong>Formula:</strong> Retained Warm KV (DRAM) = Transient KV Snapshot × Session Turnover (10×) × Warm % × (Warm Hours / 24)<br>`;
+    l4 += `<p class="note"><strong>Formula:</strong> Warm KV = Peak concurrent KV × warmPct (fraction kept hot in DRAM for fast swap-in).<br>`;
     l4 += `<strong>DRAM composition:</strong> Transient ${dc[0]} + Warm ${dc[1]} = ${dc[2]} KV in DRAM</p>`; }
-  l4 += '<p class="note"><strong>Rationale:</strong> As context grows faster than HBM capacity, KV cache spills to DRAM and NAND. Persistent KV accumulates over retention days on NAND. Warm KV (prompt/prefix caching) adds to transient DRAM demand for fast session reuse.</p>';
+  l4 += '<p class="note"><strong>Rationale:</strong> Sessions not actively decoding on GPU have their KV offloaded. activeDecodingPct determines what stays in HBM; the rest splits between DRAM (warm, fast swap-in) and NAND. Persistent KV is simply the fraction of the peak concurrent KV snapshot worth persisting to NAND.</p>';
   document.getElementById('layer4-body').innerHTML = l4;
 
   // Layer 5: RAG
@@ -1202,20 +1274,37 @@ function renderWithResults(R) {
 
   // Layer 6
   const nk = D.nonKVRAG;
-  let l6 = '<table><thead><tr><th>Category</th><th class="num">Value (EB)</th></tr></thead><tbody>';
-  const cats = [
-    ['Model weights (all copies)', 'weights', 'modelWeights'],
-    ['Training data & checkpoints', 'training', 'trainingData'],
-    ['AI-generated content (images, video, code)', 'aigen', 'aiGenContent'],
-    ['Logs, telemetry, observability', 'logs', 'logsTelemetry'],
-    ['Fine-tuning data & adapters', 'finetune', 'finetuneData'],
-  ];
-  cats.forEach(([label, key, src]) => {
-    l6 += `<tr><td>${label}</td><td class="num">${editableRaw(R[`nk_${key}`], 'nonKVRAG.'+src+'.custom')} EB</td></tr>`;
-  });
-  l6 += `<tr class="total-row"><td>Total non-KV/RAG</td><td class="num">${R.nk_total} EB</td></tr>`;
+
+  // GPU Replica derivation table
+  let l6 = '<h3 style="font-size:13px;margin-bottom:8px;color:var(--navy)">Model Weights — Derived from GPU Replica Count</h3>';
+  l6 += '<table><thead><tr><th>Segment</th><th class="num">Concurrent</th><th class="num">Active (×adp)</th><th class="num">Eff. Ctx (fill%)</th><th class="num">KV/sess</th><th class="num">Sess/Repl</th><th class="num">Replicas</th></tr></thead><tbody>';
+  for (const [seg, label, cls] of [['consumer','Consumer','seg-consumer'],['enterprise','Enterprise','seg-enterprise'],['agentic','Agentic','seg-agentic']]) {
+    const s = seg.charAt(0);
+    const effCtx = R['gpu_eff_ctx_'+s];
+    const kvSess = R['gpu_kv_per_sess_'+s];
+    const kvSessStr = kvSess >= 1024 ? (kvSess/1024).toFixed(0) + ' GB' : kvSess.toFixed(0) + ' MB';
+    const fillPct = D.gpu.avgContextFillPct[seg];
+    l6 += `<tr><td><span class="segment-label ${cls}">${label}</span></td><td class="num">${fmtNum(R['cs_'+s])}</td><td class="num">${fmtNum(R['gpu_active_'+s])}</td><td class="num">${fmtNum(effCtx)} <span style="color:var(--text-muted);font-size:10px">(${(fillPct*100).toFixed(0)}%)</span></td><td class="num">${kvSessStr}</td><td class="num">${R['gpu_sess_per_repl_'+s] === Infinity ? '∞' : fmtNum(R['gpu_sess_per_repl_'+s])}</td><td class="num">${fmtNum(R['gpu_replicas_'+s])}</td></tr>`;
+  }
+  l6 += `<tr class="total-row"><td>Total replicas</td><td></td><td></td><td></td><td></td><td></td><td class="num">${fmtNum(R.gpu_total_replicas)}</td></tr>`;
   l6 += '</tbody></table>';
-  l6 += '<p class="note">Driven by model proliferation, synthetic data generation, and regulatory retention. Video generation is particularly NAND-intensive in the bull case.</p>';
+  l6 += `<p class="note"><strong>GPU params:</strong> HBM/replica = ${scenario==='custom' ? editableRaw(D.gpu.hbmPerReplica, 'gpu.hbmPerReplica') : D.gpu.hbmPerReplica} TB, weights in HBM = ${scenario==='custom' ? editableRaw(D.gpu.modelWeightSizeHBM, 'gpu.modelWeightSizeHBM') : D.gpu.modelWeightSizeHBM} TB → available KV HBM = ${R.gpu_avail_kv_hbm.toFixed(1)} TB. Disk checkpoint = ${scenario==='custom' ? editableRaw(D.gpu.modelWeightSizeDisk, 'gpu.modelWeightSizeDisk') : D.gpu.modelWeightSizeDisk} TB/replica.<br><strong>Effective context:</strong> PagedAttention allocates KV on-demand per-token, not for max context window. avgContextFillPct reflects real-world utilization (OpenRouter 100T-token study: 5–40% of max window).<br><strong>Model weights NAND</strong> = ${fmtNum(R.gpu_total_replicas)} replicas × ${D.gpu.modelWeightSizeDisk} TB / 1M = <strong>${fmtEB(R.nk_weights)}</strong></p>`;
+
+  // Logs derivation
+  l6 += '<h3 style="font-size:13px;margin:16px 0 8px;color:var(--navy)">Logs/Telemetry — Derived from Token Volume</h3>';
+  l6 += `<p class="note" style="margin-bottom:8px">Daily tokens: ${fmtTokens(R.daily_tokens_total)} × ${scenario==='custom' ? editableRaw(D.logs.bytesPerToken, 'logs.bytesPerToken') : D.logs.bytesPerToken} bytes/token × ${scenario==='custom' ? editableRaw(D.logs.retentionDays, 'logs.retentionDays') : D.logs.retentionDays} days retention = <strong>${fmtEB(R.nk_logs)}</strong></p>`;
+
+  // Summary table
+  l6 += '<h3 style="font-size:13px;margin:16px 0 8px;color:var(--navy)">Non-KV/RAG Summary</h3>';
+  l6 += '<table><thead><tr><th>Category</th><th class="num">Value (EB)</th><th>Source</th></tr></thead><tbody>';
+  l6 += `<tr><td>Model weights (all copies)</td><td class="num">${fmtEB(R.nk_weights)}</td><td style="font-size:11px;color:var(--text-muted)">Derived: GPU replicas × disk size</td></tr>`;
+  l6 += `<tr><td>Logs, telemetry, observability</td><td class="num">${fmtEB(R.nk_logs)}</td><td style="font-size:11px;color:var(--text-muted)">Derived: daily tokens × bytes/tok × retention</td></tr>`;
+  l6 += `<tr><td>Training data &amp; checkpoints</td><td class="num">${editableRaw(R.nk_training, 'nonKVRAG.trainingData.custom')} EB</td><td style="font-size:11px;color:var(--text-muted)">Assumed</td></tr>`;
+  l6 += `<tr><td>AI-generated content (images, video, code)</td><td class="num">${editableRaw(R.nk_aigen, 'nonKVRAG.aiGenContent.custom')} EB</td><td style="font-size:11px;color:var(--text-muted)">Assumed</td></tr>`;
+  l6 += `<tr><td>Fine-tuning data &amp; adapters</td><td class="num">${editableRaw(R.nk_finetune, 'nonKVRAG.finetuneData.custom')} EB</td><td style="font-size:11px;color:var(--text-muted)">Assumed</td></tr>`;
+  l6 += `<tr class="total-row"><td>Total non-KV/RAG</td><td class="num">${fmtEB(R.nk_total)}</td><td></td></tr>`;
+  l6 += '</tbody></table>';
+  l6 += '<p class="note">Model weights and logs are now derived bottom-up. Training data, AI-generated content, and fine-tuning remain scenario-dependent assumptions.</p>';
   document.getElementById('layer6-body').innerHTML = l6;
 
   // Layer 7
@@ -1227,11 +1316,18 @@ function renderWithResults(R) {
   l7 += '</tbody></table>';
   l7 += '<p class="note">Combined as 3 + 1.5 + 1 = 5.5&times; total copies of persistent data. Bull case uses 6.5&times; due to stricter geo-distribution requirements and compliance overhead. Bear case assumes more efficient deduplication (4.5&times;). SQ uses 2.5&times; for current deployment scale.</p>';
   if (scenario === 'custom') {
-    l7 += '<h3 style="font-size:13px;margin:16px 0 8px;color:var(--navy)">Compute Parameters</h3>';
-    l7 += '<table style="max-width:600px"><thead><tr><th>Parameter</th><th class="num">Value</th><th>Description</th></tr></thead><tbody>';
-    l7 += `<tr><td>Session turnover</td><td class="num">${editableRaw(D.computeParams.sessionTurnover, 'computeParams.sessionTurnover')}</td><td>Unique sessions / concurrent (persistent KV multiplier)</td></tr>`;
+    l7 += '<h3 style="font-size:13px;margin:16px 0 8px;color:var(--navy)">GPU & Compute Parameters</h3>';
+    l7 += '<table style="max-width:700px"><thead><tr><th>Parameter</th><th class="num">Value</th><th>Description</th></tr></thead><tbody>';
+    l7 += `<tr><td>HBM per replica (TB)</td><td class="num">${editableRaw(D.gpu.hbmPerReplica, 'gpu.hbmPerReplica')}</td><td>8×VR200 @ 288 GB HBM4 each</td></tr>`;
+    l7 += `<tr><td>Model weights in HBM (TB)</td><td class="num">${editableRaw(D.gpu.modelWeightSizeHBM, 'gpu.modelWeightSizeHBM')}</td><td>Large model (~1T params) mixed precision</td></tr>`;
+    l7 += `<tr><td>Model weights on disk (TB)</td><td class="num">${editableRaw(D.gpu.modelWeightSizeDisk, 'gpu.modelWeightSizeDisk')}</td><td>Quantized on-disk checkpoint</td></tr>`;
+    l7 += `<tr><td>Avg context fill % (consumer)</td><td class="num">${editableRaw(D.gpu.avgContextFillPct.consumer, 'gpu.avgContextFillPct.consumer')}</td><td>Avg context utilization vs max window</td></tr>`;
+    l7 += `<tr><td>Avg context fill % (enterprise)</td><td class="num">${editableRaw(D.gpu.avgContextFillPct.enterprise, 'gpu.avgContextFillPct.enterprise')}</td><td>Avg context utilization vs max window</td></tr>`;
+    l7 += `<tr><td>Avg context fill % (agentic)</td><td class="num">${editableRaw(D.gpu.avgContextFillPct.agentic, 'gpu.avgContextFillPct.agentic')}</td><td>Avg context utilization vs max window</td></tr>`;
+    l7 += `<tr><td>DRAM share of offloaded KV</td><td class="num">${editableRaw(D.gpu.dramShareOfOffloaded, 'gpu.dramShareOfOffloaded')}</td><td>Of KV not in HBM, fraction in DRAM vs NAND</td></tr>`;
+    l7 += `<tr><td>Logs: bytes per token</td><td class="num">${editableRaw(D.logs.bytesPerToken, 'logs.bytesPerToken')}</td><td>Audit, traces, metrics per token</td></tr>`;
+    l7 += `<tr><td>Logs: retention days</td><td class="num">${editableRaw(D.logs.retentionDays, 'logs.retentionDays')}</td><td>Regulatory/observability retention</td></tr>`;
     l7 += `<tr><td>DRAM overhead</td><td class="num">${editableRaw(D.computeParams.dramOverhead, 'computeParams.dramOverhead')}</td><td>OS/buffer overhead multiplier on DRAM</td></tr>`;
-    l7 += `<tr><td>SQ persist weight</td><td class="num">${editableRaw(D.computeParams.baselineSqPersistWeight, 'computeParams.baselineSqPersistWeight')}</td><td>Status Quo persistent KV estimation weight</td></tr>`;
     l7 += `<tr><td>SQ repl. multiplier</td><td class="num">${editableRaw(D.computeParams.baselineSqReplMult, 'computeParams.baselineSqReplMult')}</td><td>Status Quo baseline replication factor</td></tr>`;
     l7 += '</tbody></table>';
   }
@@ -1296,12 +1392,13 @@ function renderWithResults(R) {
   sm += `<tr><td>Transient KV Cache (NAND tier)</td><td class="num">\u2014</td><td class="num">${ho ? '<span style="text-decoration:line-through;opacity:0.5;font-size:11px">'+fmtEB(R.kv_nand)+'</span> '+fmtEB(R.kv_nand/kf) : fmtEB(R.kv_nand)}</td></tr>`;
   sm += `<tr><td>Persistent KV Cache \u2192 NAND</td><td class="num">\u2014</td><td class="num">${ho ? '<span style="text-decoration:line-through;opacity:0.5;font-size:11px">'+fmtEB(R.kv_persist_nand*R.replMult)+'</span> '+fmtEB(R.kv_persist_nand*R.replMult/kf) : fmtEB(R.kv_persist_nand*R.replMult)}</td></tr>`;
   sm += `<tr><td>RAG Storage</td><td class="num">${fmtEB(R.rag_total_dram)}</td><td class="num">${ho ? '<span style="text-decoration:line-through;opacity:0.5;font-size:11px">'+fmtEB(R.rag_total_nand*R.replMult)+'</span> '+fmtEB(R.rag_total_nand*R.replMult/sf) : fmtEB(R.rag_total_nand*R.replMult)}</td></tr>`;
-  sm += `<tr><td>Non-KV/RAG (weights, training, gen content)</td><td class="num">\u2014</td><td class="num">${ho ? '<span style="text-decoration:line-through;opacity:0.5;font-size:11px">'+fmtEB(R.nk_total*R.replMult)+'</span> '+fmtEB(R.nk_total*R.replMult/sf) : fmtEB(R.nk_total*R.replMult)}</td></tr>`;
+  sm += `<tr><td>Model Weights (host DRAM)</td><td class="num">${fmtEB(R.nk_weights_dram)}</td><td class="num">\u2014</td></tr>`;
+  sm += `<tr><td>Non-KV/RAG (training, gen content, logs)</td><td class="num">\u2014</td><td class="num">${ho ? '<span style="text-decoration:line-through;opacity:0.5;font-size:11px">'+fmtEB(R.nk_total*R.replMult)+'</span> '+fmtEB(R.nk_total*R.replMult/sf) : fmtEB(R.nk_total*R.replMult)}</td></tr>`;
   const dramOH = R.ai_dram * (1 - 1/D.computeParams.dramOverhead);
   sm += `<tr><td>Server DRAM overhead (20%)</td><td class="num">${fmtEB(dramOH)}</td><td class="num">\u2014</td></tr>`;
   sm += `<tr style="border-top:2px solid rgba(255,255,255,0.3)"><td style="font-weight:800">TOTAL AI DEMAND</td><td class="num" style="font-weight:800;font-size:14px">${fmtEB(R.ai_dram)}</td><td class="num" style="font-weight:800;font-size:14px">${fmtEB(R.ai_nand)}</td></tr>`;
   sm += '</tbody></table>';
-  sm += '<p class="note" style="margin-top:12px;color:rgba(255,255,255,0.5)"><strong>Formula:</strong> AI NAND = (Persistent KV + RAG + Non-KV/RAG) &times; replication + Transient KV NAND. AI DRAM = (Transient KV DRAM + Warm KV + RAG DRAM hot tier) &times; 1.2 overhead.</p>';
+  sm += '<p class="note" style="margin-top:12px;color:rgba(255,255,255,0.5)"><strong>Formula:</strong> AI NAND = (Persistent KV + RAG + Non-KV/RAG) &times; replication + Transient KV NAND. AI DRAM = (Transient KV DRAM + Warm KV + RAG DRAM hot tier + Model Weights DRAM) &times; 1.2 overhead.</p>';
   document.getElementById('summary-body').innerHTML = sm;
 
   // Waterfall — single scenario, no year tabs
