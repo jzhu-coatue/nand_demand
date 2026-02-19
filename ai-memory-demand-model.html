@@ -4,31 +4,34 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AI-Driven DRAM &amp; NAND Demand Model</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
-  --navy: #1a2744;
-  --navy-light: #2a3f6e;
-  --bg: #f7f8fc;
+  --navy: #191B29;
+  --navy-light: #2a2d3d;
+  --bg: #FAFAFA;
   --card-bg: #ffffff;
-  --text: #1e2a3a;
-  --text-muted: #5a6a7e;
-  --border: #dde2eb;
-  --bear: #2d9a5c;
-  --bear-bg: #e8f6ee;
-  --base: #2563eb;
-  --base-bg: #e8f0ff;
-  --bull: #dc4a2a;
+  --text: #191B29;
+  --text-muted: #B4B4B4;
+  --border: #E3E3E3;
+  --bear: #75A588;
+  --bear-bg: #eef4f0;
+  --base: #191B29;
+  --base-bg: #eaeaef;
+  --bull: #CD3824;
   --bull-bg: #fce8e4;
   --accent: var(--base);
   --accent-bg: var(--base-bg);
-  --surplus: #16a34a;
-  --deficit: #dc2626;
+  --surplus: #75A588;
+  --deficit: #CD3824;
   --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
   --shadow-md: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.06);
 }
 * { margin:0; padding:0; box-sizing:border-box; }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
   line-height: 1.5;
@@ -44,15 +47,15 @@ header {
 }
 header .container { padding-top:0; padding-bottom:0; }
 header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; margin-bottom: 4px; }
-header .subtitle { font-size: 13px; color: #94a3c4; margin-bottom: 16px; }
+header .subtitle { font-size: 13px; color: rgba(255,255,255,0.5); margin-bottom: 16px; }
 .scenario-toggle { display: flex; gap: 8px; align-items: center; }
-.scenario-toggle span { font-size: 12px; color: #94a3c4; margin-right: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+.scenario-toggle span { font-size: 12px; color: rgba(255,255,255,0.5); margin-right: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
 .scenario-btn {
   padding: 7px 20px;
   border: 1.5px solid rgba(255,255,255,0.25);
   border-radius: 6px;
   background: transparent;
-  color: #c0c8dc;
+  color: rgba(255,255,255,0.6);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -60,7 +63,7 @@ header .subtitle { font-size: 13px; color: #94a3c4; margin-bottom: 16px; }
 }
 .scenario-btn:hover { border-color: rgba(255,255,255,0.5); color: #fff; }
 .scenario-btn.active-bear { background: var(--bear); border-color: var(--bear); color: #fff; }
-.scenario-btn.active-base { background: var(--base); border-color: var(--base); color: #fff; }
+.scenario-btn.active-base { background: #373945; border-color: rgba(255,255,255,0.5); color: #fff; }
 .scenario-btn.active-sq { background: #64748b; border-color: #64748b; color: #fff; }
 .scenario-btn.active-bull { background: var(--bull); border-color: var(--bull); color: #fff; }
 .scenario-btn.active-custom { background: #6b7280; border-color: #6b7280; color: #fff; }
@@ -74,9 +77,9 @@ header .subtitle { font-size: 13px; color: #94a3c4; margin-bottom: 16px; }
 .reset-select {
   padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: 600;
   border: 1.5px solid rgba(255,255,255,0.25); background: transparent;
-  color: #c0c8dc; cursor: pointer;
+  color: rgba(255,255,255,0.6); cursor: pointer;
 }
-.reset-select option { color: #1e2a3a; background: #fff; }
+.reset-select option { color: #191B29; background: #fff; }
 
 .card {
   background: var(--card-bg);
@@ -97,7 +100,7 @@ header .subtitle { font-size: 13px; color: #94a3c4; margin-bottom: 16px; }
   border-bottom: 1px solid transparent;
   transition: background 0.15s;
 }
-.card-header:hover { background: #f8f9fd; }
+.card-header:hover { background: #f5f5f5; }
 .card.open .card-header { border-bottom-color: var(--border); }
 .card-header h2 {
   font-size: 15px;
@@ -139,20 +142,20 @@ th {
 th.num, td.num { text-align: right; font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace; font-size: 12.5px; min-width: 130px; white-space: nowrap; }
 td {
   padding: 7px 12px;
-  border-bottom: 1px solid #f0f2f5;
+  border-bottom: 1px solid #f0f0f0;
   vertical-align: middle;
 }
-tr:nth-child(even) td { background: #fafbfd; }
+tr:nth-child(even) td { background: #f7f7f7; }
 tr.total-row td {
   font-weight: 700;
   border-top: 2px solid var(--navy);
   border-bottom: 2px solid var(--navy);
-  background: #f0f3fa !important;
+  background: #f0f0f0 !important;
 }
 tr.subtotal-row td {
   font-weight: 600;
   border-top: 1.5px solid var(--border);
-  background: #f5f7fb !important;
+  background: #f5f5f5 !important;
 }
 .segment-label {
   font-weight: 600;
@@ -181,7 +184,7 @@ tr.subtotal-row td {
 .summary-card td { background: transparent !important; border-bottom-color: rgba(255,255,255,0.1) !important; }
 .summary-card tr:nth-child(even) td { background: rgba(255,255,255,0.04) !important; }
 .summary-card tr.total-row td { background: rgba(255,255,255,0.10) !important; border-top-color: rgba(255,255,255,0.3) !important; border-bottom-color: rgba(255,255,255,0.3) !important; }
-.summary-card th { color: #94a3c4 !important; border-bottom-color: rgba(255,255,255,0.2) !important; }
+.summary-card th { color: rgba(255,255,255,0.5) !important; border-bottom-color: rgba(255,255,255,0.2) !important; }
 .summary-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -198,7 +201,7 @@ tr.subtotal-row td {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #94a3c4;
+  color: rgba(255,255,255,0.5);
   margin-bottom: 8px;
 }
 .summary-box .big-num {
@@ -209,7 +212,7 @@ tr.subtotal-row td {
 }
 .summary-box .sub-num {
   font-size: 13px;
-  color: #94a3c4;
+  color: rgba(255,255,255,0.5);
   margin-top: 2px;
 }
 
@@ -242,13 +245,13 @@ tr.subtotal-row td {
   transition: width 0.4s ease, left 0.4s ease;
 }
 .wf-val { width: 120px; text-align: right; flex-shrink: 0; font-family: 'SF Mono', Menlo, monospace; font-weight: 600; font-size: 12.5px; margin-left: 8px; }
-.wf-bar.positive { background: #3b82f6; }
-.wf-bar.negative { background: #ef4444; }
+.wf-bar.positive { background: #75A588; }
+.wf-bar.negative { background: #CD3824; }
 .wf-bar.total-bar { background: var(--navy); }
 .wf-bar.surplus-bar { background: var(--surplus); }
 .wf-bar.deficit-bar { background: var(--deficit); }
-.wf-bar.available { background: #8b5cf6; }
-.wf-bar.demand-bar { background: #f59e0b; }
+.wf-bar.available { background: #5C8A6E; }
+.wf-bar.demand-bar { background: #373945; }
 .wf-divider { border-top: 2px solid var(--navy); margin: 8px 0; }
 
 .drivers-table td:first-child { font-weight: 600; color: var(--navy); }
@@ -281,16 +284,16 @@ footer strong { color: var(--text); }
   .card { break-inside: avoid; }
   .card-body { display: block !important; }
 }
-.opt-card { border: 2px solid #8b5cf6; }
-.opt-card .card-header h2 .step-badge { background: #8b5cf6; }
+.opt-card { border: 2px solid #373945; }
+.opt-card .card-header h2 .step-badge { background: #373945; }
 .opt-factor-input {
   width: 60px; text-align: center;
   font-family: 'SF Mono', Menlo, monospace; font-size: 12px;
   border: 1px solid var(--border); border-radius: 3px;
   padding: 2px 6px; background: #fffef0;
 }
-.opt-factor-input:focus { border-color: #8b5cf6; outline: none; box-shadow: 0 0 0 2px #ede9fe; }
-.opt-check { width: 16px; height: 16px; cursor: pointer; accent-color: #8b5cf6; }
+.opt-factor-input:focus { border-color: #373945; outline: none; box-shadow: 0 0 0 2px #eaeaef; }
+.opt-check { width: 16px; height: 16px; cursor: pointer; accent-color: #373945; }
 .opt-combined {
   display: flex; gap: 24px; margin: 16px 0; padding: 12px 16px;
   background: #f5f3ff; border-radius: 8px; border: 1px solid #e0d9fa;
@@ -298,7 +301,7 @@ footer strong { color: var(--text); }
 }
 .opt-combined .factor-val {
   font-family: 'SF Mono', Menlo, monospace; font-size: 14px;
-  font-weight: 800; color: #8b5cf6;
+  font-weight: 800; color: #373945;
 }
 .opt-impact {
   display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;
@@ -1271,7 +1274,7 @@ function renderWithResults(R) {
   }
   sm += '</div></div>';
 
-  sm += '<table style="color:#e2e8f0"><thead><tr style="border-color:rgba(255,255,255,0.2)"><th style="color:#94a3c4">Component</th><th class="num" style="color:#94a3c4">DRAM</th><th class="num" style="color:#94a3c4">NAND</th></tr></thead><tbody>';
+  sm += '<table style="color:#e2e8f0"><thead><tr style="border-color:rgba(255,255,255,0.2)"><th style="color:rgba(255,255,255,0.5)">Component</th><th class="num" style="color:rgba(255,255,255,0.5)">DRAM</th><th class="num" style="color:rgba(255,255,255,0.5)">NAND</th></tr></thead><tbody>';
   sm += `<tr><td>Transient KV Cache (DRAM tier)</td><td class="num">${ho ? '<span style="text-decoration:line-through;opacity:0.5;font-size:11px">'+fmtEB(R.kv_dram)+'</span> '+fmtEB(R.kv_dram/kf) : fmtEB(R.kv_dram)}</td><td class="num">\u2014</td></tr>`;
   sm += `<tr><td>Retained / Warm KV (DRAM)</td><td class="num">${ho ? '<span style="text-decoration:line-through;opacity:0.5;font-size:11px">'+fmtEB(R.kv_warm_dram)+'</span> '+fmtEB(R.kv_warm_dram/kf) : fmtEB(R.kv_warm_dram)}</td><td class="num">\u2014</td></tr>`;
   sm += `<tr><td>Transient KV Cache (NAND tier)</td><td class="num">\u2014</td><td class="num">${ho ? '<span style="text-decoration:line-through;opacity:0.5;font-size:11px">'+fmtEB(R.kv_nand)+'</span> '+fmtEB(R.kv_nand/kf) : fmtEB(R.kv_nand)}</td></tr>`;
@@ -1282,7 +1285,7 @@ function renderWithResults(R) {
   sm += `<tr><td>Server DRAM overhead (20%)</td><td class="num">${fmtEB(dramOH)}</td><td class="num">\u2014</td></tr>`;
   sm += `<tr style="border-top:2px solid rgba(255,255,255,0.3)"><td style="font-weight:800">TOTAL AI DEMAND</td><td class="num" style="font-weight:800;font-size:14px">${fmtEB(R.ai_dram)}</td><td class="num" style="font-weight:800;font-size:14px">${fmtEB(R.ai_nand)}</td></tr>`;
   sm += '</tbody></table>';
-  sm += '<p class="note" style="margin-top:12px;color:#94a3c4"><strong>Formula:</strong> AI NAND = (Persistent KV + RAG + Non-KV/RAG) &times; replication + Transient KV NAND. AI DRAM = (Transient KV DRAM + Warm KV + RAG DRAM hot tier) &times; 1.2 overhead.</p>';
+  sm += '<p class="note" style="margin-top:12px;color:rgba(255,255,255,0.5)"><strong>Formula:</strong> AI NAND = (Persistent KV + RAG + Non-KV/RAG) &times; replication + Transient KV NAND. AI DRAM = (Transient KV DRAM + Warm KV + RAG DRAM hot tier) &times; 1.2 overhead.</p>';
   document.getElementById('summary-body').innerHTML = sm;
 
   // Waterfall — single scenario, no year tabs
@@ -1306,7 +1309,7 @@ function renderWithResults(R) {
   wf += `<tr><td>&minus; PC SSD</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(nandPCSSD)}</td><td class="num">${scenario==='custom' ? editableRaw(ns.pcSSD, 'nandSupply.pcSSD') + ' EB' : (nandPCSSD/totalSupply*100).toFixed(1)+'%'}</td></tr>`;
   wf += `<tr><td>&minus; Tablet</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(nandTablet)}</td><td class="num">${scenario==='custom' ? editableRaw(ns.tablet, 'nandSupply.tablet') + ' EB' : (nandTablet/totalSupply*100).toFixed(1)+'%'}</td></tr>`;
   wf += `<tr><td>&minus; Other</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(nandOther)}</td><td class="num">${scenario==='custom' ? editableRaw(ns.other, 'nandSupply.other') + ' EB' : (nandOther/totalSupply*100).toFixed(1)+'%'}</td></tr>`;
-  wf += `<tr class="subtotal-row"><td>= Available for AI</td><td class="num" style="color:#8b5cf6;font-weight:700">${fmtEB(availAI)}</td><td class="num">${(availAI/totalSupply*100).toFixed(1)}%</td></tr>`;
+  wf += `<tr class="subtotal-row"><td>= Available for AI</td><td class="num" style="color:#5C8A6E;font-weight:700">${fmtEB(availAI)}</td><td class="num">${(availAI/totalSupply*100).toFixed(1)}%</td></tr>`;
   wf += `<tr><td>&minus; AI NAND Demand (this model)</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(aiDemand)}</td><td class="num">${(aiDemand/totalSupply*100).toFixed(1)}%</td></tr>`;
 
   const surplusColor = surplus >= 0 ? 'var(--surplus)' : 'var(--deficit)';
@@ -1374,7 +1377,7 @@ function renderWithResults(R) {
   wf += `<tr><td>&minus; Tablet</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dTablet)}</td><td class="num">${scenario==='custom' ? editableRaw(ds.tablet, 'dramSupply.tablet') + ' EB' : (dTablet/dS*100).toFixed(1)+'%'}</td></tr>`;
   wf += `<tr><td>&minus; Mobile</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dMobile)}</td><td class="num">${scenario==='custom' ? editableRaw(ds.mobile, 'dramSupply.mobile') + ' EB' : (dMobile/dS*100).toFixed(1)+'%'}</td></tr>`;
   wf += `<tr><td>&minus; Other</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dOther)}</td><td class="num">${scenario==='custom' ? editableRaw(ds.other, 'dramSupply.other') + ' EB' : (dOther/dS*100).toFixed(1)+'%'}</td></tr>`;
-  wf += `<tr class="subtotal-row"><td>= Available for AI</td><td class="num" style="color:#8b5cf6;font-weight:700">${fmtEB(dAIAvail)}</td><td class="num">${(dAIAvail/dS*100).toFixed(1)}%</td></tr>`;
+  wf += `<tr class="subtotal-row"><td>= Available for AI</td><td class="num" style="color:#5C8A6E;font-weight:700">${fmtEB(dAIAvail)}</td><td class="num">${(dAIAvail/dS*100).toFixed(1)}%</td></tr>`;
   wf += `<tr><td>&minus; AI DRAM Demand (this model)</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dDemand)}</td><td class="num">${(dDemand/dS*100).toFixed(1)}%</td></tr>`;
   const dLabel = dSurplus >= 0 ? 'SURPLUS' : 'DEFICIT';
   wf += `<tr class="total-row"><td style="font-size:14px">${dLabel}</td><td class="num" style="color:${dSurplusColor};font-size:16px;font-weight:800">${dSurplus >= 0 ? '' : '('}${fmtEB(Math.abs(dSurplus))}${dSurplus >= 0 ? '' : ')'}</td><td class="num" style="color:${dSurplusColor};font-size:14px;font-weight:800">${fmtPct(dSurplusPct)}</td></tr>`;
