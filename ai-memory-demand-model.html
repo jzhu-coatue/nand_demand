@@ -226,7 +226,7 @@ tr.subtotal-row td {
   font-size: 13px;
 }
 .wf-label { min-width: 220px; width: auto; flex-shrink: 0; font-weight: 500; white-space: nowrap; padding-right: 12px; }
-.wf-bar-container { flex: 1; height: 28px; position: relative; }
+.wf-bar-container { flex: 1; height: 28px; position: relative; overflow: visible; }
 .wf-bar {
   height: 100%;
   border-radius: 3px;
@@ -239,7 +239,6 @@ tr.subtotal-row td {
   font-size: 11px;
   font-weight: 600;
   color: #fff;
-  min-width: 50px;
   white-space: nowrap;
   overflow: visible;
   transition: width 0.4s ease, left 0.4s ease;
@@ -1436,45 +1435,46 @@ function renderWithResults(R) {
   wf += `<tr><td style="font-size:13px;color:var(--muted);font-style:italic;font-weight:700;padding-top:4px">Memo: AI Demand / Available</td><td class="num" style="font-size:13px;color:var(--muted);font-style:italic;font-weight:700;padding-top:4px">${nandDemandMultiple}x</td><td></td></tr>`;
   wf += '</tbody></table>';
 
-  // NAND Waterfall bar chart
-  const maxVal = totalSupply;
+  // Bar helper: if bar is too narrow for label, show label outside to the right in black
+  function wfBar(cls, leftPct, widthPct, text) {
+    if (widthPct > 8) {
+      return `<div class="wf-bar ${cls}" style="left:${leftPct}%;width:${widthPct}%">${text}</div>`;
+    }
+    return `<div class="wf-bar ${cls}" style="left:${leftPct}%;width:${widthPct}%;padding:0"><span style="position:absolute;left:100%;padding-left:6px;font-family:'SF Mono',Menlo,monospace;font-size:11px;font-weight:600;color:var(--text);white-space:nowrap">${text}</span></div>`;
+  }
+
+  // NAND Waterfall bar chart — scale to max of supply or demand so all bars fit
+  const maxVal = Math.max(totalSupply, aiDemand);
   function barPct(v) { return Math.max(2, Math.abs(v) / maxVal * 100); }
-  function barOverflows(v) { return Math.abs(v) / maxVal * 100 > 100; }
 
   wf += '<div class="waterfall-chart" style="margin-top:20px">';
-  wf += `<div class="wf-row"><div class="wf-label">Total NAND Supply</div><div class="wf-bar-container"><div class="wf-bar total-bar" style="left:0;width:${barPct(totalSupply)}%">${commas(Math.round(totalSupply))} EB</div></div></div>`;
+  wf += `<div class="wf-row"><div class="wf-label">Total NAND Supply</div><div class="wf-bar-container">${wfBar('total-bar', 0, barPct(totalSupply), commas(Math.round(totalSupply)) + ' EB')}</div></div>`;
 
   let running = totalSupply;
   // Summary bar (visible when collapsed)
-  wf += `<div class="wf-row wf-summary-bar wf-toggle-label" id="wf-summary-bar-nand" onclick="toggleWfDetail('nand')"><div class="wf-label"><span class="wf-chevron wf-chevron-nand">&#9656;</span> Non-AI Demand</div><div class="wf-bar-container"><div class="wf-bar negative" style="left:${Math.max(0, availAI / maxVal * 100)}%;width:${barPct(nandNonAiTotal)}%">${commas(Math.round(nandNonAiTotal))}</div></div></div>`;
+  wf += `<div class="wf-row wf-summary-bar wf-toggle-label" id="wf-summary-bar-nand" onclick="toggleWfDetail('nand')"><div class="wf-label"><span class="wf-chevron wf-chevron-nand">&#9656;</span> Non-AI Demand</div><div class="wf-bar-container">${wfBar('negative', Math.max(0, availAI / maxVal * 100), barPct(nandNonAiTotal), commas(Math.round(nandNonAiTotal)))}</div></div>`;
   // Detail bars (hidden by default)
   wf += '<div id="wf-bars-detail-nand" class="wf-bars-detail">';
   const deductions = [
     ['Mobile', nandMobile], ['PC SSD', nandPCSSD], ['Tablet', nandTablet], ['Other', nandOther]
   ];
   deductions.forEach(([label, val]) => {
-    const left = (running - val) / maxVal * 100;
-    wf += `<div class="wf-row"><div class="wf-label">&minus; ${label}</div><div class="wf-bar-container"><div class="wf-bar negative" style="left:${Math.max(0,left)}%;width:${barPct(val)}%">${commas(Math.round(val))}</div></div></div>`;
+    const left = Math.max(0, (running - val) / maxVal * 100);
+    wf += `<div class="wf-row"><div class="wf-label">&minus; ${label}</div><div class="wf-bar-container">${wfBar('negative', left, barPct(val), commas(Math.round(val)))}</div></div>`;
     running -= val;
   });
   wf += '</div>';
 
   wf += '<div class="wf-divider"></div>';
-  wf += `<div class="wf-row"><div class="wf-label" style="font-weight:700">Available for AI</div><div class="wf-bar-container"><div class="wf-bar available" style="left:0;width:${barPct(availAI)}%">${commas(Math.round(availAI))}</div></div></div>`;
+  wf += `<div class="wf-row"><div class="wf-label" style="font-weight:700">Available for AI</div><div class="wf-bar-container">${wfBar('available', 0, barPct(availAI), commas(Math.round(availAI)))}</div></div>`;
 
-  if (barOverflows(aiDemand)) {
-    wf += `<div class="wf-row"><div class="wf-label">&minus; AI NAND Demand</div><div class="wf-bar-container"><div class="wf-bar demand-bar" style="left:${Math.max(0, (availAI - aiDemand)/ maxVal * 100)}%;width:${barPct(aiDemand)}%"></div><span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-family:'SF Mono',Menlo,monospace;font-size:11px;font-weight:600;color:#fff;z-index:1">${commas(Math.round(aiDemand))}</span></div></div>`;
-  } else {
-    wf += `<div class="wf-row"><div class="wf-label">&minus; AI NAND Demand</div><div class="wf-bar-container"><div class="wf-bar demand-bar" style="left:${Math.max(0, (availAI - aiDemand)/ maxVal * 100)}%;width:${barPct(aiDemand)}%">${commas(Math.round(aiDemand))}</div></div></div>`;
-  }
+  wf += `<div class="wf-row"><div class="wf-label">&minus; AI NAND Demand</div><div class="wf-bar-container">${wfBar('demand-bar', Math.max(0, (availAI - aiDemand) / maxVal * 100), barPct(aiDemand), commas(Math.round(aiDemand)))}</div></div>`;
 
   wf += '<div class="wf-divider"></div>';
   if (surplus >= 0) {
-    wf += `<div class="wf-row"><div class="wf-label" style="font-weight:800;color:var(--surplus)">SURPLUS</div><div class="wf-bar-container"><div class="wf-bar surplus-bar" style="left:0;width:${barPct(surplus)}%">${commas(Math.round(surplus))} EB</div></div></div>`;
-  } else if (barOverflows(surplus)) {
-    wf += `<div class="wf-row"><div class="wf-label" style="font-weight:800;color:var(--deficit)">DEFICIT</div><div class="wf-bar-container"><div class="wf-bar deficit-bar" style="left:0;width:${barPct(surplus)}%"></div><span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-family:'SF Mono',Menlo,monospace;font-size:11px;font-weight:600;color:#fff;z-index:1">(${commas(Math.round(Math.abs(surplus)))}) EB</span></div></div>`;
+    wf += `<div class="wf-row"><div class="wf-label" style="font-weight:800;color:var(--surplus)">SURPLUS</div><div class="wf-bar-container">${wfBar('surplus-bar', 0, barPct(surplus), commas(Math.round(surplus)) + ' EB')}</div></div>`;
   } else {
-    wf += `<div class="wf-row"><div class="wf-label" style="font-weight:800;color:var(--deficit)">DEFICIT</div><div class="wf-bar-container"><div class="wf-bar deficit-bar" style="left:0;width:${barPct(surplus)}%">(${commas(Math.round(Math.abs(surplus)))}) EB</div></div></div>`;
+    wf += `<div class="wf-row"><div class="wf-label" style="font-weight:800;color:var(--deficit)">DEFICIT</div><div class="wf-bar-container">${wfBar('deficit-bar', 0, barPct(surplus), '(' + commas(Math.round(Math.abs(surplus))) + ') EB')}</div></div>`;
   }
   wf += '</div>';
 
@@ -1511,43 +1511,36 @@ function renderWithResults(R) {
   wf += `<tr><td style="font-size:13px;color:var(--muted);font-style:italic;font-weight:700;padding-top:4px">Memo: AI Demand / Available</td><td class="num" style="font-size:13px;color:var(--muted);font-style:italic;font-weight:700;padding-top:4px">${dramDemandMultiple}x</td><td></td></tr>`;
   wf += '</tbody></table>';
 
-  // DRAM bar chart
-  const dMaxVal = dS;
+  // DRAM bar chart — scale to max of supply or demand so all bars fit
+  const dMaxVal = Math.max(dS, dDemand);
   function dBarPct(v) { return Math.max(2, Math.abs(v) / dMaxVal * 100); }
-  function dBarOverflows(v) { return Math.abs(v) / dMaxVal * 100 > 100; }
   wf += '<div class="waterfall-chart" style="margin-top:20px">';
-  wf += `<div class="wf-row"><div class="wf-label">Total DRAM Supply</div><div class="wf-bar-container"><div class="wf-bar total-bar" style="left:0;width:${dBarPct(dS)}%">${fmtEB(dS)}</div></div></div>`;
+  wf += `<div class="wf-row"><div class="wf-label">Total DRAM Supply</div><div class="wf-bar-container">${wfBar('total-bar', 0, dBarPct(dS), commas(Math.round(dS)) + ' EB')}</div></div>`;
 
   let dRunning = dS;
   // Summary bar (visible when collapsed)
-  wf += `<div class="wf-row wf-summary-bar wf-toggle-label" id="wf-summary-bar-dram" onclick="toggleWfDetail('dram')"><div class="wf-label"><span class="wf-chevron wf-chevron-dram">&#9656;</span> Non-AI Demand</div><div class="wf-bar-container"><div class="wf-bar negative" style="left:${Math.max(0, dAIAvail / dMaxVal * 100)}%;width:${dBarPct(dramNonAiTotal)}%">${fmtEBn(dramNonAiTotal)}</div></div></div>`;
+  wf += `<div class="wf-row wf-summary-bar wf-toggle-label" id="wf-summary-bar-dram" onclick="toggleWfDetail('dram')"><div class="wf-label"><span class="wf-chevron wf-chevron-dram">&#9656;</span> Non-AI Demand</div><div class="wf-bar-container">${wfBar('negative', Math.max(0, dAIAvail / dMaxVal * 100), dBarPct(dramNonAiTotal), commas(Math.round(dramNonAiTotal)))}</div></div>`;
   // Detail bars (hidden by default)
   wf += '<div id="wf-bars-detail-dram" class="wf-bars-detail">';
   const dDeductions = [
     ['PC', dPC], ['Tablet', dTablet], ['Mobile', dMobile], ['Other', dOther]
   ];
   dDeductions.forEach(([label, val]) => {
-    const left = (dRunning - val) / dMaxVal * 100;
-    wf += `<div class="wf-row"><div class="wf-label">&minus; ${label}</div><div class="wf-bar-container"><div class="wf-bar negative" style="left:${Math.max(0,left)}%;width:${dBarPct(val)}%">${fmtEBn(val)}</div></div></div>`;
+    const left = Math.max(0, (dRunning - val) / dMaxVal * 100);
+    wf += `<div class="wf-row"><div class="wf-label">&minus; ${label}</div><div class="wf-bar-container">${wfBar('negative', left, dBarPct(val), commas(Math.round(val)))}</div></div>`;
     dRunning -= val;
   });
   wf += '</div>';
 
   wf += '<div class="wf-divider"></div>';
-  wf += `<div class="wf-row"><div class="wf-label" style="font-weight:700">Available for AI</div><div class="wf-bar-container"><div class="wf-bar available" style="left:0;width:${dBarPct(dAIAvail)}%">${fmtEBn(dAIAvail)}</div></div></div>`;
-  if (dBarOverflows(dDemand)) {
-    wf += `<div class="wf-row"><div class="wf-label">&minus; AI DRAM Demand</div><div class="wf-bar-container"><div class="wf-bar demand-bar" style="left:${Math.max(0, (dAIAvail - dDemand)/ dMaxVal * 100)}%;width:${dBarPct(dDemand)}%"></div><span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-family:'SF Mono',Menlo,monospace;font-size:11px;font-weight:600;color:#fff;z-index:1">${fmtEBn(dDemand)}</span></div></div>`;
-  } else {
-    wf += `<div class="wf-row"><div class="wf-label">&minus; AI DRAM Demand</div><div class="wf-bar-container"><div class="wf-bar demand-bar" style="left:${Math.max(0, (dAIAvail - dDemand)/ dMaxVal * 100)}%;width:${dBarPct(dDemand)}%">${fmtEBn(dDemand)}</div></div></div>`;
-  }
+  wf += `<div class="wf-row"><div class="wf-label" style="font-weight:700">Available for AI</div><div class="wf-bar-container">${wfBar('available', 0, dBarPct(dAIAvail), commas(Math.round(dAIAvail)))}</div></div>`;
+  wf += `<div class="wf-row"><div class="wf-label">&minus; AI DRAM Demand</div><div class="wf-bar-container">${wfBar('demand-bar', Math.max(0, (dAIAvail - dDemand) / dMaxVal * 100), dBarPct(dDemand), commas(Math.round(dDemand)))}</div></div>`;
 
   wf += '<div class="wf-divider"></div>';
   if (dSurplus >= 0) {
-    wf += `<div class="wf-row"><div class="wf-label" style="font-weight:800;color:var(--surplus)">SURPLUS</div><div class="wf-bar-container"><div class="wf-bar surplus-bar" style="left:0;width:${dBarPct(dSurplus)}%">${fmtEB(dSurplus)}</div></div></div>`;
-  } else if (dBarOverflows(dSurplus)) {
-    wf += `<div class="wf-row"><div class="wf-label" style="font-weight:800;color:var(--deficit)">DEFICIT</div><div class="wf-bar-container"><div class="wf-bar deficit-bar" style="left:0;width:${dBarPct(dSurplus)}%"></div><span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-family:'SF Mono',Menlo,monospace;font-size:11px;font-weight:600;color:#fff;z-index:1">(${fmtEB(Math.abs(dSurplus))})</span></div></div>`;
+    wf += `<div class="wf-row"><div class="wf-label" style="font-weight:800;color:var(--surplus)">SURPLUS</div><div class="wf-bar-container">${wfBar('surplus-bar', 0, dBarPct(dSurplus), commas(Math.round(dSurplus)) + ' EB')}</div></div>`;
   } else {
-    wf += `<div class="wf-row"><div class="wf-label" style="font-weight:800;color:var(--deficit)">DEFICIT</div><div class="wf-bar-container"><div class="wf-bar deficit-bar" style="left:0;width:${dBarPct(dSurplus)}%">(${fmtEB(Math.abs(dSurplus))})</div></div></div>`;
+    wf += `<div class="wf-row"><div class="wf-label" style="font-weight:800;color:var(--deficit)">DEFICIT</div><div class="wf-bar-container">${wfBar('deficit-bar', 0, dBarPct(dSurplus), '(' + commas(Math.round(Math.abs(dSurplus))) + ') EB')}</div></div>`;
   }
   wf += '</div>';
 
