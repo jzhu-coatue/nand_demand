@@ -563,13 +563,12 @@ const DEFAULTS = {
 
   // ---- Layer 9: Supply (2026-era estimates for all scenarios) ----
   nandSupply: {
-    total: { sq: 1200, bear: 1200, base: 1200, bull: 1200 },
-    pc: 131, mobile: 182, tablet: 26,
-    other: 285, clientSSD: 272, nonAIEnt: 142
+    total: { sq: 1007, bear: 1007, base: 1007, bull: 1007 },
+    mobile: 166, pcSSD: 230, tablet: 24, other: 306
   },
   dramSupply: {
-    total: { sq: 155, bear: 155, base: 155, bull: 155 },
-    smartphone: 9.3, pc: 2.9, automotive: 1.8, other: 2.1, nonAIServer: 19.5
+    total: { sq: 38, bear: 38, base: 38, bull: 38 },
+    pc: 7, tablet: 1, mobile: 8, other: 3
   },
 
   // ---- Compute Parameters ----
@@ -942,13 +941,11 @@ function compute(sc) {
   // Layer 9: Supply
   const ns = D.nandSupply;
   R.nand_supply = ns.total[sc];
-  R.nand_pc = ns.pc;
   R.nand_mobile = ns.mobile;
+  R.nand_pcSSD = ns.pcSSD;
   R.nand_tablet = ns.tablet;
   R.nand_other = ns.other;
-  R.nand_clientSSD = ns.clientSSD;
-  R.nand_nonAI_ent = ns.nonAIEnt;
-  R.nand_nonAI_total = R.nand_pc + R.nand_mobile + R.nand_tablet + R.nand_other + R.nand_clientSSD + R.nand_nonAI_ent;
+  R.nand_nonAI_total = R.nand_mobile + R.nand_pcSSD + R.nand_tablet + R.nand_other;
   R.nand_avail_ai = R.nand_supply - R.nand_nonAI_total;
   R.nand_surplus = R.nand_avail_ai - R.ai_nand;
   R.nand_surplus_pct = (R.nand_surplus / R.nand_supply) * 100;
@@ -956,13 +953,12 @@ function compute(sc) {
   // DRAM supply
   const ds = D.dramSupply;
   R.dram_supply = ds.total[sc];
-  R.dram_smartphone = ds.smartphone;
   R.dram_pc = ds.pc;
-  R.dram_automotive = ds.automotive;
+  R.dram_tablet = ds.tablet;
+  R.dram_mobile = ds.mobile;
   R.dram_other = ds.other;
-  R.dram_nonAI_server = ds.nonAIServer;
-  R.dram_ai_avail = R.dram_supply - R.dram_smartphone - R.dram_pc - R.dram_automotive - R.dram_other - R.dram_nonAI_server;
-  R.dram_nonAI_total = R.dram_smartphone + R.dram_pc + R.dram_automotive + R.dram_other + R.dram_nonAI_server;
+  R.dram_nonAI_total = R.dram_pc + R.dram_tablet + R.dram_mobile + R.dram_other;
+  R.dram_ai_avail = R.dram_supply - R.dram_nonAI_total;
   R.dram_surplus = R.dram_ai_avail - R.ai_dram;
   R.dram_surplus_pct = (R.dram_surplus / R.dram_supply) * 100;
 
@@ -1294,12 +1290,10 @@ function renderWithResults(R) {
   const ds = D.dramSupply;
   let wf = '';
   const totalSupply = R.nand_supply;
-  const nandPC = R.nand_pc;
   const nandMobile = R.nand_mobile;
+  const nandPCSSD = R.nand_pcSSD;
   const nandTablet = R.nand_tablet;
   const nandOther = R.nand_other;
-  const nandClientSSD = R.nand_clientSSD;
-  const nonAIEnt = R.nand_nonAI_ent;
   const availAI = R.nand_avail_ai;
   const aiDemand = R.ai_nand;
   const surplus = R.nand_surplus;
@@ -1308,12 +1302,10 @@ function renderWithResults(R) {
   // NAND Table
   wf += '<table><thead><tr><th></th><th class="num">EB</th><th class="num">% of Supply</th></tr></thead><tbody>';
   wf += `<tr><td style="font-weight:700">Total NAND Supply</td><td class="num" style="font-weight:700">${scenario === 'custom' ? editableRaw(totalSupply, 'nandSupply.total.custom') + ' EB' : fmtEB(totalSupply)}</td><td class="num">100%</td></tr>`;
-  wf += `<tr><td>&minus; PC</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(nandPC)}</td><td class="num">${scenario==='custom' ? editableRaw(ns.pc, 'nandSupply.pc') + ' EB' : (nandPC/totalSupply*100).toFixed(1)+'%'}</td></tr>`;
   wf += `<tr><td>&minus; Mobile</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(nandMobile)}</td><td class="num">${scenario==='custom' ? editableRaw(ns.mobile, 'nandSupply.mobile') + ' EB' : (nandMobile/totalSupply*100).toFixed(1)+'%'}</td></tr>`;
+  wf += `<tr><td>&minus; PC SSD</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(nandPCSSD)}</td><td class="num">${scenario==='custom' ? editableRaw(ns.pcSSD, 'nandSupply.pcSSD') + ' EB' : (nandPCSSD/totalSupply*100).toFixed(1)+'%'}</td></tr>`;
   wf += `<tr><td>&minus; Tablet</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(nandTablet)}</td><td class="num">${scenario==='custom' ? editableRaw(ns.tablet, 'nandSupply.tablet') + ' EB' : (nandTablet/totalSupply*100).toFixed(1)+'%'}</td></tr>`;
   wf += `<tr><td>&minus; Other</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(nandOther)}</td><td class="num">${scenario==='custom' ? editableRaw(ns.other, 'nandSupply.other') + ' EB' : (nandOther/totalSupply*100).toFixed(1)+'%'}</td></tr>`;
-  wf += `<tr><td>&minus; Client SSD</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(nandClientSSD)}</td><td class="num">${scenario==='custom' ? editableRaw(ns.clientSSD, 'nandSupply.clientSSD') + ' EB' : (nandClientSSD/totalSupply*100).toFixed(1)+'%'}</td></tr>`;
-  wf += `<tr><td>&minus; Non-AI Enterprise / DC</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(nonAIEnt)}</td><td class="num">${scenario==='custom' ? editableRaw(ns.nonAIEnt, 'nandSupply.nonAIEnt') + ' EB' : (nonAIEnt/totalSupply*100).toFixed(1)+'%'}</td></tr>`;
   wf += `<tr class="subtotal-row"><td>= Available for AI</td><td class="num" style="color:#8b5cf6;font-weight:700">${fmtEB(availAI)}</td><td class="num">${(availAI/totalSupply*100).toFixed(1)}%</td></tr>`;
   wf += `<tr><td>&minus; AI NAND Demand (this model)</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(aiDemand)}</td><td class="num">${(aiDemand/totalSupply*100).toFixed(1)}%</td></tr>`;
 
@@ -1334,8 +1326,7 @@ function renderWithResults(R) {
 
   let running = totalSupply;
   const deductions = [
-    ['PC', nandPC], ['Mobile', nandMobile], ['Tablet', nandTablet],
-    ['Other', nandOther], ['Client SSD', nandClientSSD], ['Non-AI Enterprise', nonAIEnt]
+    ['Mobile', nandMobile], ['PC SSD', nandPCSSD], ['Tablet', nandTablet], ['Other', nandOther]
   ];
   deductions.forEach(([label, val]) => {
     const left = (running - val) / maxVal * 100;
@@ -1366,11 +1357,10 @@ function renderWithResults(R) {
   wf += '<div class="wf-divider" style="margin:48px 0 16px;border-top-width:3px"></div>';
   wf += '<h3 style="font-size:15px;margin:0 0 12px;color:var(--navy);font-weight:700">DRAM Supply Waterfall (' + scLabel + ')</h3>';
   const dS = R.dram_supply;
-  const dSmartphone = R.dram_smartphone;
   const dPC = R.dram_pc;
-  const dAuto = R.dram_automotive;
+  const dTablet = R.dram_tablet;
+  const dMobile = R.dram_mobile;
   const dOther = R.dram_other;
-  const dNonAISrv = R.dram_nonAI_server;
   const dAIAvail = R.dram_ai_avail;
   const dDemand = R.ai_dram;
   const dSurplus = R.dram_surplus;
@@ -1380,11 +1370,10 @@ function renderWithResults(R) {
   // DRAM Table
   wf += '<table><thead><tr><th></th><th class="num">EB</th><th class="num">% of Supply</th></tr></thead><tbody>';
   wf += `<tr><td style="font-weight:700">Total DRAM Supply</td><td class="num" style="font-weight:700">${scenario === 'custom' ? editableRaw(dS, 'dramSupply.total.custom') + ' EB' : fmtEB(dS)}</td><td class="num">100%</td></tr>`;
-  wf += `<tr><td>&minus; Smartphones / Mobile</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dSmartphone)}</td><td class="num">${scenario==='custom' ? editableRaw(ds.smartphone, 'dramSupply.smartphone') + ' EB' : (dSmartphone/dS*100).toFixed(1)+'%'}</td></tr>`;
-  wf += `<tr><td>&minus; PCs / Laptops</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dPC)}</td><td class="num">${scenario==='custom' ? editableRaw(ds.pc, 'dramSupply.pc') + ' EB' : (dPC/dS*100).toFixed(1)+'%'}</td></tr>`;
-  wf += `<tr><td>&minus; Automotive</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dAuto)}</td><td class="num">${scenario==='custom' ? editableRaw(ds.automotive, 'dramSupply.automotive') + ' EB' : (dAuto/dS*100).toFixed(1)+'%'}</td></tr>`;
-  wf += `<tr><td>&minus; Other (IoT, Industrial, Networking)</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dOther)}</td><td class="num">${scenario==='custom' ? editableRaw(ds.other, 'dramSupply.other') + ' EB' : (dOther/dS*100).toFixed(1)+'%'}</td></tr>`;
-  wf += `<tr><td>&minus; Non-AI Server / DC</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dNonAISrv)}</td><td class="num">${scenario==='custom' ? editableRaw(ds.nonAIServer, 'dramSupply.nonAIServer') + ' EB' : (dNonAISrv/dS*100).toFixed(1)+'%'}</td></tr>`;
+  wf += `<tr><td>&minus; PC</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dPC)}</td><td class="num">${scenario==='custom' ? editableRaw(ds.pc, 'dramSupply.pc') + ' EB' : (dPC/dS*100).toFixed(1)+'%'}</td></tr>`;
+  wf += `<tr><td>&minus; Tablet</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dTablet)}</td><td class="num">${scenario==='custom' ? editableRaw(ds.tablet, 'dramSupply.tablet') + ' EB' : (dTablet/dS*100).toFixed(1)+'%'}</td></tr>`;
+  wf += `<tr><td>&minus; Mobile</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dMobile)}</td><td class="num">${scenario==='custom' ? editableRaw(ds.mobile, 'dramSupply.mobile') + ' EB' : (dMobile/dS*100).toFixed(1)+'%'}</td></tr>`;
+  wf += `<tr><td>&minus; Other</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dOther)}</td><td class="num">${scenario==='custom' ? editableRaw(ds.other, 'dramSupply.other') + ' EB' : (dOther/dS*100).toFixed(1)+'%'}</td></tr>`;
   wf += `<tr class="subtotal-row"><td>= Available for AI</td><td class="num" style="color:#8b5cf6;font-weight:700">${fmtEB(dAIAvail)}</td><td class="num">${(dAIAvail/dS*100).toFixed(1)}%</td></tr>`;
   wf += `<tr><td>&minus; AI DRAM Demand (this model)</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dDemand)}</td><td class="num">${(dDemand/dS*100).toFixed(1)}%</td></tr>`;
   const dLabel = dSurplus >= 0 ? 'SURPLUS' : 'DEFICIT';
@@ -1402,8 +1391,7 @@ function renderWithResults(R) {
 
   let dRunning = dS;
   const dDeductions = [
-    ['Smartphones / Mobile', dSmartphone], ['PCs / Laptops', dPC],
-    ['Automotive', dAuto], ['Other (IoT/Industrial)', dOther], ['Non-AI Server / DC', dNonAISrv]
+    ['PC', dPC], ['Tablet', dTablet], ['Mobile', dMobile], ['Other', dOther]
   ];
   dDeductions.forEach(([label, val]) => {
     const left = (dRunning - val) / dMaxVal * 100;
