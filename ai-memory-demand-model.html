@@ -166,9 +166,9 @@ tr.subtotal-row td {
   border-radius: 3px;
   display: inline-block;
 }
-.seg-consumer { background: #ede9fe; color: #6d28d9; }
-.seg-enterprise { background: #dbeafe; color: #1d4ed8; }
-.seg-agentic { background: #fef3c7; color: #b45309; }
+.seg-consumer { background: #eef4f0; color: #4a7a5c; }
+.seg-enterprise { background: #eaeaef; color: #191B29; }
+.seg-agentic { background: #fce8e4; color: #CD3824; }
 
 .summary-card {
   background: linear-gradient(135deg, var(--navy) 0%, var(--navy-light) 100%);
@@ -246,7 +246,7 @@ tr.subtotal-row td {
 .wf-val { width: 120px; text-align: right; flex-shrink: 0; font-family: 'SF Mono', Menlo, monospace; font-weight: 600; font-size: 12.5px; margin-left: 8px; }
 .wf-bar.positive { background: #75A588; }
 .wf-bar.negative { background: #CD3824; }
-.wf-bar.total-bar { background: var(--navy); }
+.wf-bar.total-bar { background: var(--surplus); }
 .wf-bar.surplus-bar { background: var(--surplus); }
 .wf-bar.deficit-bar { background: var(--deficit); }
 .wf-bar.available { background: #5C8A6E; }
@@ -525,8 +525,8 @@ const DEFAULTS = {
   // ---- Layer 4: Memory Hierarchy ----
   // Tier split now derived from gpu.activeDecodingPct + gpu.dramShareOfOffloaded
   persistKVPct: {
-    consumer: 0.05,
-    enterprise: 0.30,
+    consumer: 0.25,
+    enterprise: 0.75,
     agentic: 0.80
   },
 
@@ -559,7 +559,8 @@ const DEFAULTS = {
   nonKVRAG: {
     trainingData:    { sq: 2, bear: 5, base: 10, bull: 25 },
     aiGenContent:    { sq: 1, bear: 3, base: 8, bull: 20 },
-    finetuneData:    { sq: 0.5, bear: 2, base: 5, bull: 12 }
+    finetuneData:    { sq: 0.5, bear: 2, base: 5, bull: 12 },
+    datalake:        { sq: 5, bear: 20, base: 50, bull: 150 }
   },
 
   // ---- GPU Replica Parameters (scenario-independent hardware) ----
@@ -573,7 +574,7 @@ const DEFAULTS = {
     avgContextFillPct: {        // avg context utilization vs max window (PagedAttention allocates on-demand)
       consumer: 0.15, enterprise: 0.10, agentic: 0.40
     },
-    dramShareOfOffloaded: 0.30  // of KV not in HBM, 30% in DRAM, 70% in NAND
+    dramShareOfOffloaded: 0.13  // of KV not in HBM, 13% in DRAM, 87% in NAND
   },
 
   // ---- Logs/Telemetry Parameters ----
@@ -587,12 +588,10 @@ const DEFAULTS = {
 
   // ---- Layer 9: Supply (2026-era estimates for all scenarios) ----
   nandSupply: {
-    total: { sq: 1007, bear: 1007, base: 1007, bull: 1007 },
-    mobile: 166, pcSSD: 230, tablet: 24, other: 306
+    total: { sq: 1007, bear: 1007, base: 1007, bull: 1007 }
   },
   dramSupply: {
-    total: { sq: 38, bear: 38, base: 38, bull: 38 },
-    pc: 7, tablet: 1, mobile: 8, other: 3
+    total: { sq: 38, bear: 38, base: 38, bull: 38 }
   },
 
   // ---- Compute Parameters ----
@@ -643,6 +642,8 @@ function initCustom(fromSc) {
   // Supply
   D.nandSupply.total.custom = D.nandSupply.total[fromSc];
   D.dramSupply.total.custom = D.dramSupply.total[fromSc];
+  // Datalake
+  D.nonKVRAG.datalake.custom = D.nonKVRAG.datalake[fromSc];
   // Copy optimization enabled state
   optEnabled.custom = JSON.parse(JSON.stringify(optEnabled[fromSc]));
   customScenarioSource = fromSc;
@@ -804,9 +805,9 @@ function applyOptimizations(R, sc) {
   const nkTotal = R.nk_total / storageFactor;
   R.ai_nand = ((persistKV + ragNand + nkTotal) * R.replMult) + kvNandTier;
   // Recompute surplus/deficit
-  R.nand_surplus = R.nand_avail_ai - R.ai_nand;
+  R.nand_surplus = R.nand_supply - R.ai_nand;
   R.nand_surplus_pct = (R.nand_surplus / R.nand_supply) * 100;
-  R.dram_surplus = R.dram_ai_avail - R.ai_dram;
+  R.dram_surplus = R.dram_supply - R.ai_dram;
   R.dram_surplus_pct = (R.dram_surplus / R.dram_supply) * 100;
 }
 
@@ -990,7 +991,8 @@ function compute(sc) {
   R.nk_training = nk.trainingData[sc];
   R.nk_aigen = nk.aiGenContent[sc];
   R.nk_finetune = nk.finetuneData[sc];
-  R.nk_total = R.nk_weights + R.nk_training + R.nk_aigen + R.nk_logs + R.nk_finetune;
+  R.nk_datalake = nk.datalake[sc];
+  R.nk_total = R.nk_weights + R.nk_training + R.nk_aigen + R.nk_logs + R.nk_finetune + R.nk_datalake;
 
   // Layer 7: Replication
   R.replMult = D.replicationMultiplier[sc];
@@ -1012,27 +1014,13 @@ function compute(sc) {
   }
 
   // Layer 9: Supply
-  const ns = D.nandSupply;
-  R.nand_supply = ns.total[sc];
-  R.nand_mobile = ns.mobile;
-  R.nand_pcSSD = ns.pcSSD;
-  R.nand_tablet = ns.tablet;
-  R.nand_other = ns.other;
-  R.nand_nonAI_total = R.nand_mobile + R.nand_pcSSD + R.nand_tablet + R.nand_other;
-  R.nand_avail_ai = R.nand_supply - R.nand_nonAI_total;
-  R.nand_surplus = R.nand_avail_ai - R.ai_nand;
+  R.nand_supply = D.nandSupply.total[sc];
+  R.nand_surplus = R.nand_supply - R.ai_nand;
   R.nand_surplus_pct = (R.nand_surplus / R.nand_supply) * 100;
 
   // DRAM supply
-  const ds = D.dramSupply;
-  R.dram_supply = ds.total[sc];
-  R.dram_pc = ds.pc;
-  R.dram_tablet = ds.tablet;
-  R.dram_mobile = ds.mobile;
-  R.dram_other = ds.other;
-  R.dram_nonAI_total = R.dram_pc + R.dram_tablet + R.dram_mobile + R.dram_other;
-  R.dram_ai_avail = R.dram_supply - R.dram_nonAI_total;
-  R.dram_surplus = R.dram_ai_avail - R.ai_dram;
+  R.dram_supply = D.dramSupply.total[sc];
+  R.dram_surplus = R.dram_supply - R.ai_dram;
   R.dram_surplus_pct = (R.dram_surplus / R.dram_supply) * 100;
 
   return R;
@@ -1072,12 +1060,6 @@ function toggleCard(id) {
   document.getElementById(id).classList.toggle('open');
 }
 
-function toggleWfDetail(type) {
-  document.getElementById('wf-detail-' + type).classList.toggle('open');
-  document.getElementById('wf-bars-detail-' + type).classList.toggle('open');
-  document.getElementById('wf-summary-bar-' + type).classList.toggle('open');
-  document.querySelectorAll('.wf-chevron-' + type).forEach(function(el) { el.classList.toggle('open'); });
-}
 
 function render() {
   const R = compute(scenario);
@@ -1301,9 +1283,10 @@ function renderWithResults(R) {
   l6 += `<tr><td>Training data &amp; checkpoints</td><td class="num">${editableRaw(R.nk_training, 'nonKVRAG.trainingData.custom')} EB</td><td style="font-size:11px;color:var(--text-muted)">Assumed</td></tr>`;
   l6 += `<tr><td>AI-generated content (images, video, code)</td><td class="num">${editableRaw(R.nk_aigen, 'nonKVRAG.aiGenContent.custom')} EB</td><td style="font-size:11px;color:var(--text-muted)">Assumed</td></tr>`;
   l6 += `<tr><td>Fine-tuning data &amp; adapters</td><td class="num">${editableRaw(R.nk_finetune, 'nonKVRAG.finetuneData.custom')} EB</td><td style="font-size:11px;color:var(--text-muted)">Assumed</td></tr>`;
+  l6 += `<tr><td>Multimodal training datalake</td><td class="num">${editableRaw(R.nk_datalake, 'nonKVRAG.datalake.custom')} EB</td><td style="font-size:11px;color:var(--text-muted)">Raw + embedded multimodal data (video, image, audio, text) for frontier model training</td></tr>`;
   l6 += `<tr class="total-row"><td>Total non-KV/RAG</td><td class="num">${fmtEB(R.nk_total)}</td><td></td></tr>`;
   l6 += '</tbody></table>';
-  l6 += '<p class="note">Model weights and logs are now derived bottom-up. Training data, AI-generated content, and fine-tuning remain scenario-dependent assumptions.</p>';
+  l6 += '<p class="note">Model weights and logs are now derived bottom-up. Training data, AI-generated content, fine-tuning, and datalake remain scenario-dependent assumptions.</p>';
   document.getElementById('layer6-body').innerHTML = l6;
 
   // Layer 7
@@ -1392,7 +1375,7 @@ function renderWithResults(R) {
   sm += `<tr><td>Persistent KV Cache \u2192 NAND</td><td class="num">\u2014</td><td class="num">${ho ? '<span style="text-decoration:line-through;opacity:0.5;font-size:11px">'+fmtEB(R.kv_persist_nand*R.replMult)+'</span> '+fmtEB(R.kv_persist_nand*R.replMult/kf) : fmtEB(R.kv_persist_nand*R.replMult)}</td></tr>`;
   sm += `<tr><td>RAG Storage</td><td class="num">${fmtEB(R.rag_total_dram)}</td><td class="num">${ho ? '<span style="text-decoration:line-through;opacity:0.5;font-size:11px">'+fmtEB(R.rag_total_nand*R.replMult)+'</span> '+fmtEB(R.rag_total_nand*R.replMult/sf) : fmtEB(R.rag_total_nand*R.replMult)}</td></tr>`;
   sm += `<tr><td>Model Weights (host DRAM)</td><td class="num">${fmtEB(R.nk_weights_dram)}</td><td class="num">\u2014</td></tr>`;
-  sm += `<tr><td>Non-KV/RAG (training, gen content, logs)</td><td class="num">\u2014</td><td class="num">${ho ? '<span style="text-decoration:line-through;opacity:0.5;font-size:11px">'+fmtEB(R.nk_total*R.replMult)+'</span> '+fmtEB(R.nk_total*R.replMult/sf) : fmtEB(R.nk_total*R.replMult)}</td></tr>`;
+  sm += `<tr><td>Non-KV/RAG (training, gen content, logs, datalake)</td><td class="num">\u2014</td><td class="num">${ho ? '<span style="text-decoration:line-through;opacity:0.5;font-size:11px">'+fmtEB(R.nk_total*R.replMult)+'</span> '+fmtEB(R.nk_total*R.replMult/sf) : fmtEB(R.nk_total*R.replMult)}</td></tr>`;
   const dramOH = R.ai_dram * (1 - 1/D.computeParams.dramOverhead);
   sm += `<tr><td>Server DRAM overhead (20%)</td><td class="num">${fmtEB(dramOH)}</td><td class="num">\u2014</td></tr>`;
   sm += `<tr style="border-top:2px solid rgba(255,255,255,0.3)"><td style="font-weight:800">TOTAL AI DEMAND</td><td class="num" style="font-weight:800;font-size:14px">${fmtEB(R.ai_dram)}</td><td class="num" style="font-weight:800;font-size:14px">${fmtEB(R.ai_nand)}</td></tr>`;
@@ -1401,15 +1384,8 @@ function renderWithResults(R) {
   document.getElementById('summary-body').innerHTML = sm;
 
   // Waterfall — single scenario, no year tabs
-  const ns = D.nandSupply;
-  const ds = D.dramSupply;
   let wf = '';
   const totalSupply = R.nand_supply;
-  const nandMobile = R.nand_mobile;
-  const nandPCSSD = R.nand_pcSSD;
-  const nandTablet = R.nand_tablet;
-  const nandOther = R.nand_other;
-  const availAI = R.nand_avail_ai;
   const aiDemand = R.ai_nand;
   const surplus = R.nand_surplus;
   const surplusPct = R.nand_surplus_pct;
@@ -1417,22 +1393,11 @@ function renderWithResults(R) {
   // NAND Table
   wf += '<table><thead><tr><th></th><th class="num">EB</th><th class="num">% of Supply</th></tr></thead><tbody>';
   wf += `<tr><td style="font-weight:700">Total NAND Supply</td><td class="num" style="font-weight:700">${scenario === 'custom' ? editableRaw(totalSupply, 'nandSupply.total.custom') + ' EB' : fmtEB(totalSupply)}</td><td class="num">100%</td></tr>`;
-  const nandNonAiTotal = nandMobile + nandPCSSD + nandTablet + nandOther;
-  wf += `<tr class="wf-toggle-label" onclick="toggleWfDetail('nand')"><td><span class="wf-chevron wf-chevron-nand">&#9656;</span> Non-AI Demand (4 items)</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(nandNonAiTotal)}</td><td class="num">${(nandNonAiTotal/totalSupply*100).toFixed(1)}%</td></tr>`;
-  wf += '</tbody><tbody id="wf-detail-nand" class="wf-detail">';
-  wf += `<tr><td style="padding-left:28px">&minus; Mobile</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(nandMobile)}</td><td class="num">${scenario==='custom' ? editableRaw(ns.mobile, 'nandSupply.mobile') + ' EB' : (nandMobile/totalSupply*100).toFixed(1)+'%'}</td></tr>`;
-  wf += `<tr><td style="padding-left:28px">&minus; PC SSD</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(nandPCSSD)}</td><td class="num">${scenario==='custom' ? editableRaw(ns.pcSSD, 'nandSupply.pcSSD') + ' EB' : (nandPCSSD/totalSupply*100).toFixed(1)+'%'}</td></tr>`;
-  wf += `<tr><td style="padding-left:28px">&minus; Tablet</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(nandTablet)}</td><td class="num">${scenario==='custom' ? editableRaw(ns.tablet, 'nandSupply.tablet') + ' EB' : (nandTablet/totalSupply*100).toFixed(1)+'%'}</td></tr>`;
-  wf += `<tr><td style="padding-left:28px">&minus; Other</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(nandOther)}</td><td class="num">${scenario==='custom' ? editableRaw(ns.other, 'nandSupply.other') + ' EB' : (nandOther/totalSupply*100).toFixed(1)+'%'}</td></tr>`;
-  wf += '</tbody><tbody>';
-  wf += `<tr class="subtotal-row"><td>= Available for AI</td><td class="num" style="color:#5C8A6E;font-weight:700">${fmtEB(availAI)}</td><td class="num">${(availAI/totalSupply*100).toFixed(1)}%</td></tr>`;
   wf += `<tr><td>&minus; AI NAND Demand (this model)</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(aiDemand)}</td><td class="num">${(aiDemand/totalSupply*100).toFixed(1)}%</td></tr>`;
 
   const surplusColor = surplus >= 0 ? 'var(--surplus)' : 'var(--deficit)';
   const surplusLabel = surplus >= 0 ? 'SURPLUS' : 'DEFICIT';
   wf += `<tr class="total-row"><td style="font-size:14px">${surplusLabel}</td><td class="num" style="color:${surplusColor};font-size:16px;font-weight:800">${surplus >= 0 ? '' : '('}${fmtEB(Math.abs(surplus))}${surplus >= 0 ? '' : ')'}</td><td class="num" style="color:${surplusColor};font-size:14px;font-weight:800">${fmtPct(surplusPct)}</td></tr>`;
-  const nandDemandMultiple = availAI > 0 ? commas((aiDemand / availAI).toFixed(1)) : '\u2014';
-  wf += `<tr><td style="font-size:13px;color:var(--muted);font-style:italic;font-weight:700;padding-top:4px">Memo: AI Demand / Available</td><td class="num" style="font-size:13px;color:var(--muted);font-style:italic;font-weight:700;padding-top:4px">${nandDemandMultiple}x</td><td></td></tr>`;
   wf += '</tbody></table>';
 
   // Bar helper: if bar is too narrow for label, show label outside to the right in black
@@ -1450,25 +1415,7 @@ function renderWithResults(R) {
   wf += '<div class="waterfall-chart" style="margin-top:20px">';
   wf += `<div class="wf-row"><div class="wf-label">Total NAND Supply</div><div class="wf-bar-container">${wfBar('total-bar', 0, barPct(totalSupply), commas(Math.round(totalSupply)) + ' EB')}</div></div>`;
 
-  let running = totalSupply;
-  // Summary bar (visible when collapsed)
-  wf += `<div class="wf-row wf-summary-bar wf-toggle-label" id="wf-summary-bar-nand" onclick="toggleWfDetail('nand')"><div class="wf-label"><span class="wf-chevron wf-chevron-nand">&#9656;</span> Non-AI Demand</div><div class="wf-bar-container">${wfBar('negative', Math.max(0, availAI / maxVal * 100), barPct(nandNonAiTotal), commas(Math.round(nandNonAiTotal)))}</div></div>`;
-  // Detail bars (hidden by default)
-  wf += '<div id="wf-bars-detail-nand" class="wf-bars-detail">';
-  const deductions = [
-    ['Mobile', nandMobile], ['PC SSD', nandPCSSD], ['Tablet', nandTablet], ['Other', nandOther]
-  ];
-  deductions.forEach(([label, val]) => {
-    const left = Math.max(0, (running - val) / maxVal * 100);
-    wf += `<div class="wf-row"><div class="wf-label">&minus; ${label}</div><div class="wf-bar-container">${wfBar('negative', left, barPct(val), commas(Math.round(val)))}</div></div>`;
-    running -= val;
-  });
-  wf += '</div>';
-
-  wf += '<div class="wf-divider"></div>';
-  wf += `<div class="wf-row"><div class="wf-label" style="font-weight:700">Available for AI</div><div class="wf-bar-container">${wfBar('available', 0, barPct(availAI), commas(Math.round(availAI)))}</div></div>`;
-
-  wf += `<div class="wf-row"><div class="wf-label">&minus; AI NAND Demand</div><div class="wf-bar-container">${wfBar('demand-bar', Math.max(0, (availAI - aiDemand) / maxVal * 100), barPct(aiDemand), commas(Math.round(aiDemand)))}</div></div>`;
+  wf += `<div class="wf-row"><div class="wf-label">&minus; AI NAND Demand</div><div class="wf-bar-container">${wfBar('demand-bar', Math.max(0, (totalSupply - aiDemand) / maxVal * 100), barPct(aiDemand), commas(Math.round(aiDemand)))}</div></div>`;
 
   wf += '<div class="wf-divider"></div>';
   if (surplus >= 0) {
@@ -1482,11 +1429,6 @@ function renderWithResults(R) {
   wf += '<div class="wf-divider" style="margin:48px 0 16px;border-top-width:3px"></div>';
   wf += '<h3 style="font-size:15px;margin:0 0 12px;color:var(--navy);font-weight:700">DRAM Supply Waterfall (' + scLabel + ')</h3>';
   const dS = R.dram_supply;
-  const dPC = R.dram_pc;
-  const dTablet = R.dram_tablet;
-  const dMobile = R.dram_mobile;
-  const dOther = R.dram_other;
-  const dAIAvail = R.dram_ai_avail;
   const dDemand = R.ai_dram;
   const dSurplus = R.dram_surplus;
   const dSurplusPct = R.dram_surplus_pct;
@@ -1495,20 +1437,9 @@ function renderWithResults(R) {
   // DRAM Table
   wf += '<table><thead><tr><th></th><th class="num">EB</th><th class="num">% of Supply</th></tr></thead><tbody>';
   wf += `<tr><td style="font-weight:700">Total DRAM Supply</td><td class="num" style="font-weight:700">${scenario === 'custom' ? editableRaw(dS, 'dramSupply.total.custom') + ' EB' : fmtEB(dS)}</td><td class="num">100%</td></tr>`;
-  const dramNonAiTotal = dPC + dTablet + dMobile + dOther;
-  wf += `<tr class="wf-toggle-label" onclick="toggleWfDetail('dram')"><td><span class="wf-chevron wf-chevron-dram">&#9656;</span> Non-AI Demand (4 items)</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dramNonAiTotal)}</td><td class="num">${(dramNonAiTotal/dS*100).toFixed(1)}%</td></tr>`;
-  wf += '</tbody><tbody id="wf-detail-dram" class="wf-detail">';
-  wf += `<tr><td style="padding-left:28px">&minus; PC</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dPC)}</td><td class="num">${scenario==='custom' ? editableRaw(ds.pc, 'dramSupply.pc') + ' EB' : (dPC/dS*100).toFixed(1)+'%'}</td></tr>`;
-  wf += `<tr><td style="padding-left:28px">&minus; Tablet</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dTablet)}</td><td class="num">${scenario==='custom' ? editableRaw(ds.tablet, 'dramSupply.tablet') + ' EB' : (dTablet/dS*100).toFixed(1)+'%'}</td></tr>`;
-  wf += `<tr><td style="padding-left:28px">&minus; Mobile</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dMobile)}</td><td class="num">${scenario==='custom' ? editableRaw(ds.mobile, 'dramSupply.mobile') + ' EB' : (dMobile/dS*100).toFixed(1)+'%'}</td></tr>`;
-  wf += `<tr><td style="padding-left:28px">&minus; Other</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dOther)}</td><td class="num">${scenario==='custom' ? editableRaw(ds.other, 'dramSupply.other') + ' EB' : (dOther/dS*100).toFixed(1)+'%'}</td></tr>`;
-  wf += '</tbody><tbody>';
-  wf += `<tr class="subtotal-row"><td>= Available for AI</td><td class="num" style="color:#5C8A6E;font-weight:700">${fmtEB(dAIAvail)}</td><td class="num">${(dAIAvail/dS*100).toFixed(1)}%</td></tr>`;
   wf += `<tr><td>&minus; AI DRAM Demand (this model)</td><td class="num" style="color:var(--bull)">&minus;${fmtEB(dDemand)}</td><td class="num">${(dDemand/dS*100).toFixed(1)}%</td></tr>`;
   const dLabel = dSurplus >= 0 ? 'SURPLUS' : 'DEFICIT';
   wf += `<tr class="total-row"><td style="font-size:14px">${dLabel}</td><td class="num" style="color:${dSurplusColor};font-size:16px;font-weight:800">${dSurplus >= 0 ? '' : '('}${fmtEB(Math.abs(dSurplus))}${dSurplus >= 0 ? '' : ')'}</td><td class="num" style="color:${dSurplusColor};font-size:14px;font-weight:800">${fmtPct(dSurplusPct)}</td></tr>`;
-  const dramDemandMultiple = dAIAvail > 0 ? commas((dDemand / dAIAvail).toFixed(1)) : '\u2014';
-  wf += `<tr><td style="font-size:13px;color:var(--muted);font-style:italic;font-weight:700;padding-top:4px">Memo: AI Demand / Available</td><td class="num" style="font-size:13px;color:var(--muted);font-style:italic;font-weight:700;padding-top:4px">${dramDemandMultiple}x</td><td></td></tr>`;
   wf += '</tbody></table>';
 
   // DRAM bar chart — scale to max of supply or demand so all bars fit
@@ -1517,24 +1448,7 @@ function renderWithResults(R) {
   wf += '<div class="waterfall-chart" style="margin-top:20px">';
   wf += `<div class="wf-row"><div class="wf-label">Total DRAM Supply</div><div class="wf-bar-container">${wfBar('total-bar', 0, dBarPct(dS), commas(Math.round(dS)) + ' EB')}</div></div>`;
 
-  let dRunning = dS;
-  // Summary bar (visible when collapsed)
-  wf += `<div class="wf-row wf-summary-bar wf-toggle-label" id="wf-summary-bar-dram" onclick="toggleWfDetail('dram')"><div class="wf-label"><span class="wf-chevron wf-chevron-dram">&#9656;</span> Non-AI Demand</div><div class="wf-bar-container">${wfBar('negative', Math.max(0, dAIAvail / dMaxVal * 100), dBarPct(dramNonAiTotal), commas(Math.round(dramNonAiTotal)))}</div></div>`;
-  // Detail bars (hidden by default)
-  wf += '<div id="wf-bars-detail-dram" class="wf-bars-detail">';
-  const dDeductions = [
-    ['PC', dPC], ['Tablet', dTablet], ['Mobile', dMobile], ['Other', dOther]
-  ];
-  dDeductions.forEach(([label, val]) => {
-    const left = Math.max(0, (dRunning - val) / dMaxVal * 100);
-    wf += `<div class="wf-row"><div class="wf-label">&minus; ${label}</div><div class="wf-bar-container">${wfBar('negative', left, dBarPct(val), commas(Math.round(val)))}</div></div>`;
-    dRunning -= val;
-  });
-  wf += '</div>';
-
-  wf += '<div class="wf-divider"></div>';
-  wf += `<div class="wf-row"><div class="wf-label" style="font-weight:700">Available for AI</div><div class="wf-bar-container">${wfBar('available', 0, dBarPct(dAIAvail), commas(Math.round(dAIAvail)))}</div></div>`;
-  wf += `<div class="wf-row"><div class="wf-label">&minus; AI DRAM Demand</div><div class="wf-bar-container">${wfBar('demand-bar', Math.max(0, (dAIAvail - dDemand) / dMaxVal * 100), dBarPct(dDemand), commas(Math.round(dDemand)))}</div></div>`;
+  wf += `<div class="wf-row"><div class="wf-label">&minus; AI DRAM Demand</div><div class="wf-bar-container">${wfBar('demand-bar', Math.max(0, (dS - dDemand) / dMaxVal * 100), dBarPct(dDemand), commas(Math.round(dDemand)))}</div></div>`;
 
   wf += '<div class="wf-divider"></div>';
   if (dSurplus >= 0) {
